@@ -15,7 +15,6 @@ $type = $_FILES['userfile']['type'];
 $name = $_FILES['userfile']['name'];
 $tmpname = $_FILES['userfile']['tmp_name'];
 $size = $_FILES['userfile']['size'];
-$uploaddir = '/opt/lampp/htdocs/ooaemkee/SC2Replay/upload/';
 $err = false;
 if ($size >= $MAX_FILE_SIZE) {
 	echo "Error: The uploaded file was too large. The maximum size is ".$MAX_FILE_SIZE." bytes.<br />";
