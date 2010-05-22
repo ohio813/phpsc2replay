@@ -40,6 +40,8 @@ class SC2Replay {
 	private $version;
 	private $build;
 	private $events;
+	private $debug;
+	private $debugNewline;
 	
 	
 	function __construct() {
@@ -48,11 +50,16 @@ class SC2Replay {
 		$this->mapName = NULL;
 		$this->gameSpeed = 0;
 		$this->teamSize = NULL;
+		$this->debug = false;
+		$this->debugNewline = "<br />\n";
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
 		if (!is_a($mpqfile, "MPQFile")) return false;
-		if ($mpqfile->getVersion() < 9) return MPQ_ERR_LOWSC2REPLAYVERSION; //demo format changed at major version 9, no support for older ones
+		if ($mpqfile->getVersion() < 9) {
+			if ($this->debug) $this->debug("Too low replay version");
+			return MPQ_ERR_LOWSC2REPLAYVERSION; //demo format changed at major version 9, no support for older ones
+		}
 		$this->version = $mpqfile->getVersion();
 		$this->build = $mpqfile->getBuild();
 		// first parse replay.details file
@@ -60,6 +67,7 @@ class SC2Replay {
 		if ($file !== false) {
 			$this->parseDetailsFile($file);
 		}
+		else if ($this->debug) $this->debug("Error reading the replay.details file");
 	
 		$file = $mpqfile->readFile("replay.attributes.events");
 		if ($file !== false) {
@@ -68,10 +76,16 @@ class SC2Replay {
 			$fs = $mpqfile->getFileSize("replay.sync.events");
 			if ($fs !== false) $this->gameLength = $fs / self::$gameSpeedCE[$this->gameSpeed]; // sync event is 4 bytes, with a sync window of 1/8th to 1/16th of a second
 		}
+		else if ($this->debug) $this->debug("Error reading the replay.attributes.events file");
+		
 		$file = $mpqfile->readFIle("replay.game.events");
 		if (file !== false) $this->parseGameEventsFile($file);
+		else if ($this->debug) $this->debug("Error reading the replay.game.events file");
 		
 	}
+	private function debug($message) { echo $message.($this->debugNewline); }
+	function setDebugNewline($str) { $this->debugNewline = $str; }
+	function setDebug($bool) { $this->debug = $bool; }
 	function getPlayers() { return $this->players; }
 	function getMapName() { return $this->mapName; }
 	function getGameSpeed() { return $this->gameSpeed; }
@@ -94,6 +108,7 @@ class SC2Replay {
 	// parse replay.details file and add parsed stuff to the object
 	// $string contains the contents of the file
 	function parseDetailsFile($string) {
+		if ($this->debug) $this->debug("Parsing replay.details file...");
 		$numByte = 0;
 		$numByte += 6; 
 		$numPlayers = $this->readByte($string,$numByte) / 2;
@@ -132,8 +147,15 @@ class SC2Replay {
 		while ($hadKey) {
 			$hadKey = false;
 			$key = unpack("c2",$this->readBytes($string,$numByte,2));
-			if ($key[2] == 9) { $hadKey = true; $keys[$key[1]] = $this->parseKeyVal($string,$numByte); }
+			if ($key[2] == 9) { 
+				$hadKey = true; 
+				$keys[$key[1]] = $this->parseKeyVal($string,$numByte); 
+			}
 			else if ($key[1] == 6 && $key[2] == 2) { break; }
+		}
+		if ($this->debug) {
+			foreach ($keys as $k => $v)
+				$this->debug("Got pre-longname($sName) key: $k, value: $v");
 		}
 		$lNameLen = $this->readByte($string,$numByte) / 2;
 		if ($lNameLen > 0) $lName = $this->readBytes($string,$numByte,$lNameLen);
@@ -155,23 +177,28 @@ class SC2Replay {
 				if ($key[1] == 4) { $cG = $keyVal; } // green color
 				if ($key[1] == 6) { $cB = $keyVal; } // blue color
 				if ($key[1] == 16) { $party = $keyVal / 2; } // party number?
-				//if ($sName !== NULL) echo sprintf("%s Key: %d, value: %d<br />",$sName,$key[1], $keyVal);
+				if ($this->debug) $this->debug(sprintf("%s Key: %d, value: %d",$sName,$key[1], $keyVal));
 			}
 			else if ($key[1] == 5 && $key[2] == 18) {$numByte -= 2; break; } // next player
 			else if ($key[1] == 2 && $key[2] == 2) { break; } // end of player section
 		}
-		if (($sName === NULL) && ($lName === NULL)) return NULL;
+		if (($sName === NULL) && ($lName === NULL)) {
+			if ($this->debug) $this->debug("Got null player");
+			return NULL;
+		}
 		$p = array();
 		$p["sName"] = $sName;
 		$p["lName"] = $lName;
 		$p["race"] = $race;
 		$p["party"] = $party;
 		$p["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
+		if ($this->debug) $this->debug(sprintf("Got player: %s (%s), Race: %s, Party: %s, Color: %s",$sName, $lName, $race, $party, $p["color"]));
 		return $p;
 	}
 	
 	// parameter is the contents of the replay.attributes.events file
 	private function parseAttributesFile($string) {
+		if ($this->debug) $this->debug("Parsing replay.attributes.events file");
 		$numByte = 4; // skip the 4-byte header
 		$numAttribs = $this->readUInt32($string,$numByte);
 		for ($i = 0;$i < $numAttribs;$i++) {
@@ -186,8 +213,8 @@ class SC2Replay {
 				if ($b != 0) $attribVal .= chr($b);
 			}
 			$numByte += 4;
-//			echo sprintf("Got attrib \"%04X\" for player %d (%s), attribVal = \"%s\"<br />",
-//							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["sName"]),$attribVal);
+			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d (%s), attribVal = \"%s\"",
+							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["sName"]),$attribVal));
 			switch ($attributeId) {
 				case 0x07D3: // team, VERY uncertain because of gazillion other 0x07DX values
 					$this->players[$playerId]["team"] = intval(substr($attribVal,1));
@@ -293,8 +320,8 @@ class SC2Replay {
 						case 0x05: // game starts
 							break;
 						default:
-							echo sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte);
+						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 					}
 					break;
 				case 0x01: // action
@@ -570,8 +597,8 @@ class SC2Replay {
 							$numByte += 17; // 84 00 00 0c 84 00 00 00 80 00 00 00 80 00 00 00 00
 							break;
 						default:
-							echo sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte);
+						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 					}				
 					break;
 				case 0x02: // unused? not so much
@@ -580,8 +607,8 @@ class SC2Replay {
 							$numByte += 8; // 00 00 00 04 00 00 00 04
 						break;
 						default:
-							echo sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte);
+						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 					}
 					break;
 				case 0x03: // replay
@@ -590,8 +617,8 @@ class SC2Replay {
 							$numByte += 20; // always 20 bytes
 							break;
 						default:
-							echo sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte);
+						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 					}
 					break;
 				case 0x04: // inaction
@@ -609,8 +636,8 @@ class SC2Replay {
 						case 0x2C: // no data
 							break;
 						default:
-							echo sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte);
+						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 					}
 					break;
 				case 0x05: // system
@@ -619,13 +646,13 @@ class SC2Replay {
 							$numByte += 4;
 							break;
 						default:
-							echo sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte);
+						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 					}
 					break;
 				default:
-					echo sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-							$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte);
+						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 			}
 		}
 		// update winners based on $playerLeft -array
@@ -641,8 +668,14 @@ class SC2Replay {
 		// if the number of players who left is $numActual - 1, then everyone else except the recorder left and he is the winner
 		// if the number of players who left is $numActual - 2, then whoever left after the recorder is the winner. can be determined if the recorder is known.
 		// otherwise the winner cannot be determined, since any one of the players who left after the recorder could be the winner
-		if ($numLeft == ($numActual - 1)) $this->players[$lastLeaver]['won'] = 0;
-		else return;
+		if ($numLeft == ($numActual - 1)) {
+			if ($this->debug) $this->debug("Found winner");
+			$this->players[$lastLeaver]['won'] = 0;
+		}
+		else {
+			if ($this->debug) $this->debug("Unable to parse winner");
+			return;
+		}
 
 		foreach ($this->players as $val) {
 			if (($val['party'] > 0) && (!isset($val['won']))) $winteam = $val['party'];
@@ -701,8 +734,9 @@ class MPQFile {
 	private $verMajor;
 	private $build;
 	private $sectorSize;
+	private $debugNewline;
 	
-	function __construct($filename, $autoparse = true) {
+	function __construct($filename, $autoparse = true, $debug = false) {
 		$this->filelist = array();
 		$this->filename = $filename;
 		$this->hashtable = NULL;
@@ -715,8 +749,13 @@ class MPQFile {
 		$this->verMajor = 0;
 		$this->build = 0;
 		$this->sectorSize = 0;
-		if (file_exists($this->filename))
+		$this->debug = $debug;
+		$this->debugNewline = "<br />\n";
+		
+		if (file_exists($this->filename)) {
 			$this->fp = fopen($this->filename, 'rb');
+			if ($this->debug && $this->fp === false) $this->debug("Error opening file $filename for reading");
+		}
 		if ($autoparse)
 			$this->parseHeader();
 	}
@@ -724,10 +763,15 @@ class MPQFile {
 		if ($this->fp !== FALSE)
 			fclose($this->fp);
 	}
-	
+	private function debug($message) { echo $message.($this->debugNewline); }
+	function setDebugNewline($str) { $this->debugNewline = $str; }
+	function setDebug($bool) { $this->debug = $bool; }
 	
 	function parseHeader() {
-		if ($this->fp === FALSE) return false;
+		if ($this->fp === FALSE) {
+			return false;
+			if ($this->debug) $this->debug("Invalid file pointer");
+		}
 		$fp = $this->fp;
 		$headerParsed = false;
 		$headerOffset = 0;
@@ -735,6 +779,7 @@ class MPQFile {
 			$magic = unpack("c4",fread($fp,4)); // MPQ 1Bh or 1Ah
 			if (($magic[1] != 0x4D) || ($magic[2] != 0x50) || ($magic[3] != 0x51)) { $this->init = MPQ_ERR_NOTMPQFILE; return false; }
 			if ($magic[4] == 27) { // user data block (1Bh)
+				if ($this->debug) $this->debug(sprintf("Found user data block at %08X",ftell($fp)));
 				$uDataMaxSize = $this->readUInt32();
 				$headerOffset = $this->readUInt32();
 				$this->headerOffset = $headerOffset;
@@ -749,6 +794,7 @@ class MPQFile {
 				fseek($fp,$headerOffset);
 			}
 			else if ($magic[4] == 26) { // header (1Ah)
+				if ($this->debug) $this->debug(sprintf("Found header at %08X",ftell($fp)));
 				$headerSize = $this->readUInt32();
 				$archiveSize = $this->readUInt32();
 				$formatVersion = $this->readUInt16();
@@ -765,7 +811,10 @@ class MPQFile {
 				
 				$headerParsed = true;
 			}
-			else return false;
+			else {
+				if ($this->debug) $this->debug("Could not find MPQ header");
+				return false;
+			}
 		}
 		// read and decode the hash table
 		fseek($this->fp, $hashTableOffset);
@@ -785,10 +834,7 @@ class MPQFile {
 		$this->hashtable = $hashTable;
 		$this->blocktable = $blockTable;
 		$this->init = MPQFILE_PARSE_OK;
-		// check if listfile exists
 
-		$listfile = $this->readFile("(listfile)");
-		if ($listfile !== FALSE) $this->listfile = $listfile;
 		return true;
 	}
 	
@@ -817,8 +863,11 @@ class MPQFile {
 	}
 	
 	function getFileSize($filename) {
-		if ($this->init === false) return false;
-				$hashA = hashStuff($filename, MPQ_HASH_NAME_A);
+		if ($this->init === false) {
+			if ($this->debug) $this->debug("Tried to use getFileSize without initializing");
+			return false;
+		}
+		$hashA = hashStuff($filename, MPQ_HASH_NAME_A);
 		$hashB = hashStuff($filename, MPQ_HASH_NAME_B);
 		$hashStart = hashStuff($filename, MPQ_HASH_TABLE_OFFSET) & ($this->hashTableSize - 1);
 		$tmp = $hashStart;
@@ -831,11 +880,15 @@ class MPQFile {
 			}
 			$tmp = ($tmp + 1) % $this->hashTableSize;
 		} while ($tmp != $hashStart);
+		if ($this->debug) $this->debug("Did not find file $filename in archive");
 		return false;
 	}
 	
 	function readFile($filename) {
-		if ($this->init === false) return false;
+		if ($this->init === false) {
+			if ($this->debug) $this->debug("Tried to use getFile without initializing");
+			return false;
+		}
 		$hashA = hashStuff($filename, MPQ_HASH_NAME_A);
 		$hashB = hashStuff($filename, MPQ_HASH_NAME_B);
 		$hashStart = hashStuff($filename, MPQ_HASH_TABLE_OFFSET) & ($this->hashTableSize - 1);
@@ -853,7 +906,10 @@ class MPQFile {
 			}
 			$tmp = ($tmp + 1) % $this->hashTableSize;
 		} while ($tmp != $hashStart);
-		if ($blockSize == -1) return false;
+		if ($blockSize == -1) {
+			if ($this->debug) $this->debug("Did not find file $filename in archive");
+			return false;
+		}
 		$flag_file       = $flags & 0x80000000;
 		$flag_checksums  = $flags & 0x04000000;
 		$flag_deleted    = $flags & 0x02000000;
@@ -862,7 +918,10 @@ class MPQFile {
 		$flag_encrypted  = $flags & 0x00010000;
 		$flag_compressed = $flags & 0x00000200;
 		$flag_imploded   = $flags & 0x00000100;
-
+		
+		if ($this->debug) $this->debug(sprintf("Found file $filename with flags %08X, block offset %08X, block size %d and file size %d",
+										$flags, $blockOffset,$blockSize,$fileSize));
+		
 		if (!$flag_file) return false;
 		fseek($this->fp,$blockOffset);
 		if ($flag_checksums) {
@@ -890,12 +949,17 @@ class MPQFile {
 						$output .= deflate_decompress($sectorData);
 						break;
 					default:
+						if ($this->debug) $this->debug(sprintf("Unknown compression type: %d",$compressionType));
 						return false;
 				}
 			}
 			else $output .= $sectorData;
 		}
-		if (strlen($output) != $fileSize) return false;
+		if (strlen($output) != $fileSize) {
+			if ($this->debug) $this->debug(sprintf("Decrypted/uncompressed file size(%d) does not match original file size(%d)",
+											strlen($output),$fileSize));
+			return false;
+		}
 		return $output;
 	}
 	function getState() {
@@ -909,6 +973,7 @@ function deflate_decompress($string) {
 		$tmp = gzinflate(substr($string,2,strlen($string) - 2));
 		return $tmp;
 	}
+	if ($this->debug) $this->debug("Function 'gzinflate' does not exist, is gzlib installed as a module?");
 	return false;
 }
 
