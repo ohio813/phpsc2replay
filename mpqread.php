@@ -724,28 +724,25 @@ class SC2Replay {
 
 class MPQFile {
 	private $filename;
-	private $filelist;
 	private $fp;
 	private $hashtable,$blocktable;
 	private $hashTableSize, $blocKTableSize;
 	private $headerOffset;
-	private $listfile;
 	private $init;
 	private $verMajor;
 	private $build;
 	private $sectorSize;
+	private $debug;
 	private $debugNewline;
 	private $gameLen;
 	
 	function __construct($filename, $autoparse = true, $debug = false) {
-		$this->filelist = array();
 		$this->filename = $filename;
 		$this->hashtable = NULL;
 		$this->blocktable = NULL;
 		$this->hashTableSize = 0;
 		$this->blockTableSize = 0;
 		$this->headerOffset = 0;
-		$this->listfile = NULL;
 		$this->init = false;
 		$this->verMajor = 0;
 		$this->build = 0;
@@ -844,32 +841,32 @@ class MPQFile {
 	}
 	
 	// read little endian 32-bit integer
-	function readUInt32($bigendian = false) {
+	private function readUInt32($bigendian = false) {
 		if ($this->fp === FALSE) return false;
 		$t = unpack(($bigendian === true)?"N":"V",fread($this->fp,4));
 		return $t[1];
 	}
 
-	function readUInt16($bigendian = false) {
+	private function readUInt16($bigendian = false) {
 		if ($this->fp === FALSE) return false;
 		$t = unpack(($bigendian === true)?"n":"v",fread($this->fp,2));
 		return $t[1];
 	}
-	function readByte() {
+	private function readByte() {
 		if ($this->fp === FALSE) return false;
 		$t = unpack("C",fread($this->fp,1));
 		return $t[1];
 	}
 	
 	// read a byte from string and remove the read byte
-	function readSByte(&$string) {
+	private function readSByte(&$string) {
 		$t = unpack("C",substr($string,0,1));
 		$string = substr($string,1,strlen($string) -1);
 		return $t[1];	
 	}
 	
 	function getFileSize($filename) {
-		if ($this->init === false) {
+		if ($this->init !== MPQFILE_PARSE_OK) {
 			if ($this->debug) $this->debug("Tried to use getFileSize without initializing");
 			return false;
 		}
@@ -891,7 +888,7 @@ class MPQFile {
 	}
 	
 	function readFile($filename) {
-		if ($this->init === false) {
+		if ($this->init !== MPQFILE_PARSE_OK) {
 			if ($this->debug) $this->debug("Tried to use getFile without initializing");
 			return false;
 		}
