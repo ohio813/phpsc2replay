@@ -56,6 +56,7 @@ class SC2Replay {
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
 		if (!is_a($mpqfile, "MPQFile")) return false;
+		$this->gameLength = $mpqfile->getGameLength();
 		if ($mpqfile->getVersion() < 9) {
 			if ($this->debug) $this->debug("Too low replay version");
 			return MPQ_ERR_LOWSC2REPLAYVERSION; //demo format changed at major version 9, no support for older ones
@@ -72,9 +73,8 @@ class SC2Replay {
 		$file = $mpqfile->readFile("replay.attributes.events");
 		if ($file !== false) {
 			$this->parseAttributesFile($file);
-			// parse game length here because the result depends on gamespeed, which replay.attributes.events has
-			$fs = $mpqfile->getFileSize("replay.sync.events");
-			if ($fs !== false) $this->gameLength = $fs / self::$gameSpeedCE[$this->gameSpeed]; // sync event is 4 bytes, with a sync window of 1/8th to 1/16th of a second
+//			$fs = $mpqfile->getFileSize("replay.sync.events");
+//			if ($fs !== false) $this->gameLength = $fs / self::$gameSpeedCE[$this->gameSpeed]; // sync event is 4 bytes, with a sync window of 1/8th to 1/16th of a second
 		}
 		else if ($this->debug) $this->debug("Error reading the replay.attributes.events file");
 		
@@ -735,6 +735,7 @@ class MPQFile {
 	private $build;
 	private $sectorSize;
 	private $debugNewline;
+	private $gameLen;
 	
 	function __construct($filename, $autoparse = true, $debug = false) {
 		$this->filelist = array();
@@ -748,6 +749,7 @@ class MPQFile {
 		$this->init = false;
 		$this->verMajor = 0;
 		$this->build = 0;
+		$this->gameLen = 0;
 		$this->sectorSize = 0;
 		$this->debug = $debug;
 		$this->debugNewline = "<br />\n";
@@ -785,11 +787,14 @@ class MPQFile {
 				$this->headerOffset = $headerOffset;
 				$uDataSize = $this->readUInt32();
 				fseek($fp,24,SEEK_CUR); // skip Starcraft II replay 0x1B 0x32 0x01 0x00
-				$verMajor =  $this->readUInt32();
+				$verMajor =  $this->readUInt16();
 				$this->verMajor = $verMajor;
-				$build = $this->readUInt32();
+				$build = $this->readUInt32(true);
 				$this->build = $build;
-		
+				$build2 = $this->readUInt32(true);
+				fseek($fp,2,SEEK_CUR); // skip 02 00
+				$gameLen =  $this->readUInt16(true) / 2;
+				$this->gameLen = $gameLen;
 				
 				fseek($fp,$headerOffset);
 			}
@@ -838,28 +843,29 @@ class MPQFile {
 		return true;
 	}
 	
-	function readUInt32($string = false, $offset = -1) {
+	// read little endian 32-bit integer
+	function readUInt32($bigendian = false) {
 		if ($this->fp === FALSE) return false;
-		if ($offset != -1) fseek($this->fp, $offset);
-		$t = unpack("V",fread($this->fp,4));
+		$t = unpack(($bigendian === true)?"N":"V",fread($this->fp,4));
 		return $t[1];
 	}
-	function readUInt16($string = false, $offset = -1) {
+
+	function readUInt16($bigendian = false) {
 		if ($this->fp === FALSE) return false;
-		if ($offset != -1) fseek($this->fp, $offset);
-		$t = unpack("v",fread($this->fp,2));
+		$t = unpack(($bigendian === true)?"n":"v",fread($this->fp,2));
 		return $t[1];
 	}
-	function readByte(&$string = false, $offset = -1) {
-		if ($string === false && $this->fp === FALSE) return false;
-		if ($string === false && $offset != -1) fseek($this->fp, $offset);
-		if ($string !== false) {
-			$t = unpack("C",substr($string,0,1));
-			$string = substr($string,1,strlen($string) -1);
-		}	
-		else
-			$t = unpack("C",fread($this->fp,1));
+	function readByte() {
+		if ($this->fp === FALSE) return false;
+		$t = unpack("C",fread($this->fp,1));
 		return $t[1];
+	}
+	
+	// read a byte from string and remove the read byte
+	function readSByte(&$string) {
+		$t = unpack("C",substr($string,0,1));
+		$string = substr($string,1,strlen($string) -1);
+		return $t[1];	
 	}
 	
 	function getFileSize($filename) {
@@ -943,7 +949,7 @@ class MPQFile {
 			fseek($this->fp,$blockOffset + $sectors[$i],SEEK_SET);
 			$sectorData = fread($this->fp,$sectorLen);
 			if ($flag_compressed && (($flag_singleunit && ($blockSize < $fileSize)) || ($flag_checksums && ($sectorLen <  $this->sectorSize)))) {
-				$compressionType = $this->readByte($sectorData);
+				$compressionType = $this->readSByte($sectorData);
 				switch ($compressionType) {
 					case 2:
 						$output .= deflate_decompress($sectorData);
@@ -967,6 +973,7 @@ class MPQFile {
 	}
 	function getBuild() { return $this->build; }
 	function getVersion() { return $this->verMajor; }
+	function getGameLength() { return $this->gameLen; }
 }
 function deflate_decompress($string) {
 	if (function_exists("gzinflate")){
