@@ -50,23 +50,22 @@ if (isset($_FILES['userfile'])) {
 		$err = true;
 	}
 	if ($err !== true) {
-		if (class_exists("MPQFile") || (include 'mpqread.php')) {
+		if (class_exists("MPQFile") || (include 'mpqfile.php')) {
 			$start = microtime_float();
 			$a = new MPQFile($tmpname,true,(($_POST['debug'] == 1)?"true":false));
 			$init = $a->getState();
 
-			echo sprintf("Major version %d, build %d<br />\n",$a->getVersion(),$a->getBuild());
 			if ($init == MPQ_ERR_NOTMPQFILE)
 				echo "Error parsing uploaded file, make sure it is a valid MPQ archive!<br />\n";
 			else if ($a->getVersion() < 9)
 				echo "Error: This parser only supports SC2 beta demos from major version 9 onwards<br />\n";
 			else {
-				$b = new SC2Replay();
+				echo sprintf("Major version %d, build %d<br />\n",$a->getVersion(),$a->getBuild());
+				$b = $a->parseReplay();
 				if ($_POST['debug'] == 1) {
 					echo sprintf("<b>Debugging is on.</b><br />\n");
 					$b->setDebug(true);
 				}
-				$b->parseReplay($a);
 				$tmp = $b->getPlayers();
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
@@ -93,7 +92,7 @@ if (isset($_FILES['userfile'])) {
 						foreach ($tmp as $value2) {
 							if ($value2['party'] == 0) continue;
 							if ($value['p'] == $value2['id'])
-								echo sprintf("<td>%s</td>",$sc2_abilityCodes[$value['a']]);
+								echo sprintf("<td>%s</td>",$b->getAbilityString($value['a']));
 							else
 								echo "<td></td>";
 						}
