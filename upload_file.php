@@ -25,6 +25,67 @@
     <input type="submit" value="Upload File" />
 </form>
 <?php
+function createAPMImage($vals, $length, $fn) {
+	$width = 300;
+	$height = 200;
+	$pixelsPerSecond = $width/ $length;
+	$pic = imagecreatetruecolor($width,$height);
+	$lineColor = imagecolorallocate($pic,0,0,0);
+	$lineColorGrey = imagecolorallocate($pic,192,192,192);
+	$bgColor = imagecolorallocate($pic,255,255,255);
+	$bgColorT = imagecolorallocatealpha($pic,255,255,255,127);
+	imagefill($pic,0,0,$bgColorT);
+	// first create x/y pairs
+	$xypair = array();
+	$maxapm = 0;
+	for ($x = 1;$x <= $width;$x++) {
+		$secs = ceil($x / $pixelsPerSecond);
+		$apm = 0;
+		if ($secs < 60) {
+			for ($tmp = 0;$tmp < $secs;$tmp++)
+				$apm += $vals[$tmp];
+			$apm = $apm / $secs * 60;
+		} else {
+			for ($tmp = $secs - 60;$tmp < $secs;$tmp++)
+				$apm += $vals[$tmp];
+			$apm = $apm;
+		}
+		if ($apm > $maxapm)
+			$maxapm = $apm;
+		$xypair[$x] = $apm;
+
+	}
+	// then draw them
+	if ($maxapm == 0)
+		return;
+	for ($i = 2;$i <= $width;$i++) {
+		imageline($pic,$i - 1,$xypair[$i - 1] / $maxapm * $height, $i, $xypair[$i] / $maxapm * $height,$lineColor);
+	}
+	$frame = imagecreatetruecolor($width +50,$height+50);
+	imagefill($frame,0,0,$bgColor);
+	
+	imagerectangle($frame,40,0,$width + 40,$height,$lineColor);
+	imageline($frame,40,$height / 2,$width + 40,$height / 2, $lineColorGrey);
+
+
+	imagestringup($frame,4,5,$height - 15,"APM -->",$lineColor);
+	imagestring($frame,4,55,$height + 20,"Time (minutes)",$lineColor);
+	imagestring($frame,2,25,$height - 15,"0",$lineColor);
+	imagestring($frame,2,20,($height / 2),$maxapm / 2,$lineColor);
+	imagestring($frame,2,20,0,$maxapm,$lineColor);
+	$lengthMins = ($length / 60);
+	for ($i = 0;$i < $lengthMins;$i+=5) {
+		imagestring($frame,2,40+($width / ($lengthMins / 5) * ($i / 5)),$height + 5,$i,$lineColor);
+		if ($i > 0)
+			imageline($frame,40+($width / ($lengthMins / 5) * ($i / 5)),0,40+($width / ($lengthMins / 5) * ($i / 5)),$height, $lineColorGrey);		
+	}
+	imagecopy($frame,$pic,40,0,0,0,$width,$height);
+	imagepng($frame,$fn);
+	imagedestroy($frame);
+	imagedestroy($pic);
+}
+
+
 $MAX_FILE_SIZE = 1000000;
 if (isset($_FILES['userfile'])) {
 	$error = $_FILES['userfile']['error'];
@@ -70,13 +131,18 @@ if (isset($_FILES['userfile'])) {
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				
-				echo "<table><tr><th>Player name</th><th>Long name</th><th>Race</th><th>Color</th><th>Team</th><th>Winner?</th></tr>\n";
+				$apmString = "<b>APM graphs</b><br />\n";
+				echo "<table><tr><th>Player name</th><th>Long name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
 				foreach($tmp as $value) {
 					$wincolor = ($value['won'] == 1)?0x00FF00:0xFF0000;
-					echo sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
-									$value['sName'],$value['lName'],$value['race'],$value['color'],$value['sColor'],(($value['party'] > 0)?"Team ".$value['party']:"-"),((isset($value['won']))?$wincolor:0xFFFFFF),(isset($value['won']))?$value['won']:(($value['party'] > 0)?"Unknown":"-"));
+					echo sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
+									$value['sName'],$value['lName'],$value['race'],$value['color'],$value['sColor'],(($value['party'] > 0)?"Team ".$value['party']:"-"),round($value['apmtotal'] / ($b->getGameLength() / 60)),((isset($value['won']))?$wincolor:0xFFFFFF),(isset($value['won']))?$value['won']:(($value['party'] > 0)?"Unknown":"-"));
+					$apmFileName = $value['id']."_".md5($name).".png";
+					createAPMImage($value['apm'],$b->getGameLength(),$apmFileName);
+					$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['sName']);
 				}
 				echo "</table><br />";
+				echo $apmString;
 				
 				$t = $b->getEvents();
 				if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {

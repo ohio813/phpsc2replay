@@ -320,6 +320,13 @@ class SC2Replay {
 			$eventCode = $this->readByte($string,$numByte);
 			$time += $timeStamp;
 			// weird timestamp values mean that there's likely a problem with the alignment of the parse(too few/too many bytes read for an eventcode)
+			if ($this->debug) {
+				$bytes = unpack("C24",substr($string,$numByte,24));
+				$dataBytes = "";
+				for ($i = 1;$i <= 24;$i++) $dataBytes .= sprintf("%02X",$bytes[$i]);
+				$this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X, Data: %s<br />\n",
+					$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte,$dataBytes));
+			}
 			switch ($eventType) {
 				case 0x00: // initialization
 					switch ($eventCode) {
@@ -359,6 +366,9 @@ class SC2Replay {
 								$data .= $this->readByte($string,$numByte); 
 							if ($reqTarget == 0x50)
 								$data .= $this->readByte($string,$numByte);
+							// update apm array
+							$this->players[$playerId]['apmtotal']++;
+							$this->players[$playerId]['apm'][floor($time / 64)]++;
 							break;
 						case 0x2F: // player sends resources
 							$numByte += 17; // data is 17 bytes long
@@ -416,6 +426,12 @@ class SC2Replay {
 								$numByte += $totalUnits * 4;
 								//if ($uTypesCount == 0) $numByte--;
 								//if ($dsuCount % 8 != 0) $numByte++;
+							}
+							
+							//update apm fields
+							if ($eventCode == 0xAC) {
+								$this->players[$playerId]['apmtotal']++;
+								$this->players[$playerId]['apm'][floor($time / 64)]++;
 							}
 							break;
 						case 0x0D: // manually uses hotkey
@@ -497,6 +513,9 @@ class SC2Replay {
 							$numByte += $extraBytes;
 							$extraExtraByte = ((($byte1 & 4) == 4) && (($byte2 & 3) == 3))?1:0;
 							$numByte += $extraExtraByte;
+							// update apm
+							$this->players[$playerId]['apmtotal']++;
+							$this->players[$playerId]['apm'][floor($time / 64)]++;
 /*
 							switch ($byte2) {
 								case 0x83:
