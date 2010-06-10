@@ -330,6 +330,7 @@ function initCryptTable() {
 	return $cryptTable;
 }
 
+// function that adds up two integers without allowing them to overflow to floats
 function uPlus($o1, $o2) {
 	$o1h = ($o1 >> 16) & 0xFFFF;
 	$o1l = $o1 & 0xFFFF;
@@ -343,6 +344,7 @@ function uPlus($o1, $o2) {
 	return ((($oh << 16) & 0xFFFF0000) | ($ol & 0xFFFF));
 }
 
+// right shift without preserving the sign(leftmost) bit
 function rShift($num,$bits) {
 	return (($num >> 1) & 0x7FFFFFFF) >> ($bits - 1);
 }

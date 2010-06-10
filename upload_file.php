@@ -132,7 +132,7 @@ if (isset($_FILES['userfile'])) {
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				
 				$apmString = "<b>APM graphs</b><br />\n";
-				echo "<table><tr><th>Player name</th><th>Long name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
+				echo "<table border=\"1\"><tr><th>Player name</th><th>Long name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
 				foreach($tmp as $value) {
 					$wincolor = ($value['won'] == 1)?0x00FF00:0xFF0000;
 					echo sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
@@ -142,6 +142,14 @@ if (isset($_FILES['userfile'])) {
 					$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['sName']);
 				}
 				echo "</table><br />";
+				$messages = $b->getMessages();
+				if (count($messages) > 0) {
+					echo "<b>Messages:</b><br /><table border=\"1\"><tr><th>Time</th><th>Player</th><th>Target</th><th>Message</th></tr>\n";
+					foreach ($messages as $val)
+						echo sprintf("<tr><td>%d sec</td><td>%s</td><td>%s</td><td>%s</td></tr>\n",$val['time'],
+									  $val['name'], ($val['target'] == 2)?"Alliance":"All",$val['message']);
+					echo "</table><br />\n";
+				}
 				echo $apmString;
 				
 				$t = $b->getEvents();

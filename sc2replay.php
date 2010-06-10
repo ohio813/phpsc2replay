@@ -20,16 +20,17 @@ class SC2Replay {
 	public static $gameSpeedCE = array(0 => 39, 1=> 44, 2=> 60, 3=> 64, 4=> 64); // estimates, weird values
 	public static $colorIndices = array(1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Pink");
 	private $players; //array, indices: color, team, sname, lname, race, startRace, handicap, ptype
-	private $gameLength;
+	private $gameLength; // game length in seconds
 	private $mapName;
-	private $gameSpeed;
-	private $teamSize;
+	private $gameSpeed; // game speed, number from 0-4. see $gameSpeeds array above
+	private $teamSize; // team size in the format xvx, eg. 1v1
 	private $gamePublic;
 	private $version;
 	private $build;
-	private $events;
-	private $debug;
-	private $debugNewline;
+	private $events; // contains an array of the events in replay.game.events file
+	private $debug; // debug, currently true or false
+	private $debugNewline; // contents are appended to the end of all debug messages
+	private $messages; // contains an array of the chat log messages
 	
 	
 	function __construct() {
@@ -61,14 +62,20 @@ class SC2Replay {
 		$file = $mpqfile->readFile("replay.attributes.events");
 		if ($file !== false) {
 			$this->parseAttributesFile($file);
+// 			the following is fallback game length calculation, left here in case the value in mpq header ever breaks or goes away
 //			$fs = $mpqfile->getFileSize("replay.sync.events");
-//			if ($fs !== false) $this->gameLength = $fs / self::$gameSpeedCE[$this->gameSpeed]; // sync event is 4 bytes, with a sync window of 1/8th to 1/16th of a second
+//			if ($fs !== false) $this->gameLength = $fs / self::$gameSpeedCE[$this->gameSpeed]; 
+// sync event is 4 bytes, with a sync window of 1/8th to 1/16th of a second <---- UNCERTAIN, a theory
 		}
 		else if ($this->debug) $this->debug("Error reading the replay.attributes.events file");
 		
-		$file = $mpqfile->readFIle("replay.game.events");
+		$file = $mpqfile->readFile("replay.game.events");
 		if (file !== false) $this->parseGameEventsFile($file);
 		else if ($this->debug) $this->debug("Error reading the replay.game.events file");
+		
+		$file = $mpqfile->readFile("replay.message.events");
+		if (file !== false) $this->parseChatLog($file);
+		else if ($this->debug) $this->debug("Error reading the replay.message.events file");
 		
 	}
 	private function debug($message) { echo $message.($this->debugNewline); }
@@ -81,6 +88,7 @@ class SC2Replay {
 	function getTeamSize() { return $this->teamSize; }
 	function getVersion() { return $this->version; }
 	function getBuild() { return $this->build; }
+	function getMessages() { return $this->messages; }
 	// getFormattedGameLength returns the time in h hrs, m mins, s secs 
 	function getFormattedGameLength() {
 		$hrs = floor($this->gameLength / 3600);
@@ -112,7 +120,7 @@ class SC2Replay {
 
 		$numByte += 2; // 04 02
 		$u1Len = $this->readByte($string,$numByte) / 2;
-		if ($u1Len > 0) $this->readByte($string,$numByte,$u1Len); //$numByte += $u1 = fread($fp,$u1Len);
+		if ($u1Len > 0) $this->readByte($string,$numByte,$u1Len);
 
 		
 		$numByte += 5; // 06 05 02 00 02
@@ -196,6 +204,7 @@ class SC2Replay {
 			$numByte += 2; //skip another 00 00 bytes
 			$playerId = $this->readByte($string,$numByte);
 			$attribVal = "";
+			// values are stored in reverse in the file, eg Terr becomes rreT. The following loop flips the value and removes excess null bytes
 			for ($a = 0;$a < 4;$a++) {
 				$b = ord(substr($string,$numByte + 3 - $a));
 				if ($b != 0) $attribVal .= chr($b);
@@ -295,6 +304,7 @@ class SC2Replay {
 		return (($bytes[1] << 16) | ($bytes[2] << 8) | ($bytes[3]));
 	}
 	
+	// gets players who actually played in the game, meaning excludes observers and party members.
 	public function getActualPlayers() {
 		$tmp = array();
 		foreach ($this->players as $val)
@@ -302,7 +312,32 @@ class SC2Replay {
 				$tmp[] = $val;
 		return $tmp;
 	}
-	
+	// parameter is the contents of the replay.message.events -file
+	private function parseChatLog($string) {
+		$numByte = 0;
+		$len = strlen($string);
+		$messages = array();
+		$totTime = 0;
+		while ($numByte < $len) {
+			$timestamp = $this->parseTimeStamp($string,$numByte);
+			$playerId = $this->readByte($string,$numByte);
+			$opcode = $this->readByte($string,$numByte);
+			$totTime += $timestamp;
+			if ($opcode == 0x80) // header weird thingy?
+				$numByte += 4;
+			else if ($opcode == 0x00 || $opcode == 0x02) { // message
+				$messageTarget = $opcode;
+				$messageLength = $this->readByte($string,$numByte);
+				$message = $this->readBytes($string,$numByte,$messageLength);
+				$messages[] = array('id' => $playerId, 'name' => $this->players[$playerId]['sName'], 'target' => $messageTarget,
+									'time' => floor($totTime / 16), 'message' => $message);
+			}
+			else if ($opcode == 0x83) { // ping on map? 9 bytes?
+				$numByte += 9;
+			}
+		}
+		$this->messages = $messages;
+	}
 	// parameter is the contents of the replay.game.events -file
 	private function parseGameEventsFile($string) {
 		$numByte = 0;
@@ -341,7 +376,6 @@ class SC2Replay {
 					}
 					break;
 				case 0x01: // action
-					//echo sprintf("ETYPE: %d, First action event data at byte: %d, eventcode %d<br />\n",$eventType,$numByte,$eventCode);
 					switch ($eventCode) {
 						case 0x09: // player quits the game
 							if ($this->players[$playerId]['party'] > 0) // don't log observers/party members etc
@@ -357,7 +391,6 @@ class SC2Replay {
 								$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
 								$this->events = $events;
 							}
-							//echo sprintf("Unit ability: %06X, reqtarget = %02X<br />\n",$this->readUnitAbility($data),$reqTarget);
 							// at least with attack, move, right-click, if the byte after unit ability bytes is 
 							// 0x30 or 0x50, the struct takes 1 extra byte. With build orders the struct seems to be 32 bytes
 							// and this byte is 0x00.
@@ -404,17 +437,15 @@ class SC2Replay {
 									$uType[$i]['id'] = $tmp;
 									$nByte = $this->readByte($string,$numByte);
 									$tmp = (($nBytes[2] & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nByte & (0xFF >> (8 - $dsuExtraBits))));
-									//$tmp = (($n2Bytes[2] >> $dsuExtraBits) | (($nByte << (8 - $dsuExtraBits))& 0xFF));
+
 									$uType[$i]['count'] = $tmp;
 								}
 								$lByte = $this->readByte($string,$numByte);
 								$tmp = (($nByte & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($lByte & (0xFF >> (8 - $dsuExtraBits))));
-								//$tmp = (($nByte >> $dsuExtraBits) | (($lByte << (8 - $dsuExtraBits))& 0xFF));
+
 								$totalUnits = $tmp;
 								//unnecessary to parse unit ID values at this point, so skip them
 								$numByte += $totalUnits * 4;
-								//$numByte++; // padding to get to byte boundary
-								//if ($uTypesCount == 0) $numByte--;
 							} else { // byte-aligned
 								$uTypesCount = $this->readByte($string,$numByte);
 								for ($i = 1;$i <= $uTypesCount;$i++) {
@@ -424,8 +455,6 @@ class SC2Replay {
 								$totalUnits = $this->readByte($string,$numByte);
 								//unnecessary to parse unit ID values at this point, so skip them
 								$numByte += $totalUnits * 4;
-								//if ($uTypesCount == 0) $numByte--;
-								//if ($dsuCount % 8 != 0) $numByte++;
 							}
 							
 							//update apm fields
@@ -436,69 +465,6 @@ class SC2Replay {
 							break;
 						case 0x0D: // manually uses hotkey
 						case 0x1D:
-											// 00 00 == assigned new group? (ctrl+hotkey)
-											// 02 00 == selected group? (hotkey)
-											// 06 34
-											// 06 be
-											// 0a 03 04
-											// 0a 03 04
-											// 0a 13 04
-											// 02 1b
-											//other file: dronsu kusetus
-											// 0a 84 00
-											// 0a a7 0d
-											// 0a a7 0d
-											// 0a a7 0d
-											// 0a af 0d
-											// 0a c0 00
-											// c0 00
-											// 0a 0c 00
-											// 0a c0 00
-											// 0a 80 00
-											// 0a 80 00
-											// 0a 06 02
-											// 0a 26 0e
-											// 0a 3e 0e
-											
-											
-											// 0e 3c 2c
-											// 1a 03 08 00 04
-											// 12 8a 0c 02
-											// 0d 2f 68 01
-											// 0d 00 0a
-											// 19 1b 77 9c 1d
-											// 06 83 00
-											// 06 cb 00
-											// 09 a4 00
-											// 16 21 eb 7b
-											// 16 f5 db 7a
-											// 16 01 00 18
-											// 16 09 00 19
-											// 0e 83 e4 00
-											// 2e 58 b0 f1 eb 62 38
-											// 2e 07 00 40 00 00 20 00
-											// 02 05
-											// 36 b0 80 21 76 6d 84 0c
-											// 3e b1 c0 31 fe 6d 8c 0b 50
-											// 1e 3c 5d bf 2e
-											// 46 c4 02 ea 93 1e 70 99 65 21
-											// 62 9f 7d fb 6f ff 7f ff fb bf df 9e 7e 1e
-											// 26 03 00 04 02 98 00
-											// 2a 00 00 04 03 cc 00
-											// 16 aa c8 7f
-											// 0e 17 20 00
-											// 16 c1 10 14
-											// 3a 5e 75 86 00 10 00 08 03
-											// 0e 07 22 00
-											// 06 c3 00
-											// 11 fd dd 07
-											// 05 c3 00
-											// 02 17
-											// 2e 03 20 82 00 00 20 00
-											// 16 03 45 ac 00
-											// 0e 03 20 00
-											// 16 ff c1 fa 00
-										
 						case 0x2D:
 						case 0x3D:
 						case 0x4D:
@@ -516,111 +482,7 @@ class SC2Replay {
 							// update apm
 							$this->players[$playerId]['apmtotal']++;
 							$this->players[$playerId]['apm'][floor($time / 64)]++;
-/*
-							switch ($byte2) {
-								case 0x83:
-								case 0xcb:
-								case 0xc3:
-								case 0x17:
-								case 0x07:
-								case 0x03:
-								case 0x2f:
-									$numByte++;
-									break;
-							}
-							
-							switch ($byte1) {
-								case 0x05:
-								case 0x06:
-									if ($byte2 == 0x83) $numByte += 1;
-									if ($byte2 == 0xcb) $numByte += 1;
-									if ($byte2 == 0xc3) $numByte += 1;
-									break;
-								case 0x09:
-								case 0x0a:
-								case 0x0e:
-									if ($byte2 == 0x83) $numByte += 1;
-									if ($byte2 == 0x17) $numByte += 1;
-									if ($byte2 == 0x07) $numByte += 1;
-									if ($byte2 == 0x03) $numByte++;
-									$numByte += 1;
-									break;
-								case 0x11:
-								case 0x12:
-									$numByte += 2;
-									break;
-								case 0x16:
-									if ($byte2 == 0x03) $numByte++;
-									if ($byte2 == 0xff) $numByte++;
-									$numByte += 2;
-									break;
-								case 0x19:
-								case 0x1a:
-								case 0x1e:
-									$numByte += 3;
-									break;
-								case 0x22:
-								case 0x26:
-									if ($byte2 == 0x03) $numByte++;
-									$numByte += 4;
-									break;
-								case 0x2a:
-								case 0x2e:
-									if ($byte2 == 0x07) $numByte++;
-									if ($byte2 == 0x03) $numByte++;
-									$numByte += 5;
-									break;
-								case 0x32:
-								case 0x36:
-									$numByte += 6;
-									break;
-								case 0x3a:
-								case 0x3e:
-									$numByte += 7;
-									break;
-								case 0x46:
-									$numByte += 8;
-									break;
-								case 0x62:
-									$numByte += 12;
-									break;
-								case 0x0d: // 0d 2f 68 01, 0d 00 0a
-									switch ($byte2) {
-										case 0x2f:
-											$numByte += 2;
-											break;
-										case 0x00:
-											$numByte += 1;
-											break;
-										default:
-											$numByte += 2;
-									}
-								}
-							*/
-							//if ($extrabytes > 0)
-//								$numByte += $extrabytes;
-							//if ($byte1 < 0x0a) break; // values of 0x0a and 0x0e have a third byte at least.
-							//$byte3 = $this->readByte($string,$numByte);
-							//if ($byte1 == 0x1a) // value of 0x1a makes the total length 5 bytes (2 extra compared to 0x0a and 0x0e)
-												// perhaps bits 4 and 5 of byte 1 make up the number of extra bytes to read?
-							
 							break;
-/*						case 0x0C: // automatic update of hotkey?
-						case 0x1C:
-						case 0x2C:
-						case 0x3C: // 01 01 01 01 11 01 03 02 02 38 00 01 02 3c 00 01 00
-						case 0x4C: // 01 02 02 01 0d 00 02 01 01 a8 00 00 01
-						case 0x5C: // 01 01 01 01 16 03 01 01 03 18 00 01 00
-						case 0x6C: // 01 04 08 01 03 00 02 01 01 34 c0 00 01
-						case 0x7C: // 01 05 10 01 01 10 02 01 01 1a a0 00 01
-						case 0x8C:
-						case 0x9C:
-							$byte1 = $this->readByte($string,$numByte);
-							$numByte += 12;							
-							if ($byte1 == 1) $numByte += 4;
-						//$numByte += 13;
-							break;
-						*/
 						case 0x1F: // no idea
 							$numByte += 17; // 84 00 00 0c 84 00 00 00 80 00 00 00 80 00 00 00 00
 							break;
@@ -629,7 +491,7 @@ class SC2Replay {
 								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 					}				
 					break;
-				case 0x02: // unused? not so much
+				case 0x02: // weird
 					switch($eventCode) {
 						case 0x06:
 							$numByte += 8; // 00 00 00 04 00 00 00 04
@@ -712,32 +574,15 @@ class SC2Replay {
 			if ($val['party'] == $winteam) $this->players[$val['id']]['won'] = 1;
 			else if ($val['party'] > 0) $this->players[$val['id']]['won'] = 0;
 		}
-		
-		/*
-		foreach ($this->players as $key => $value) {
-			for ($i = 0;$i < $numLeft;$i++) {
-				if (!isset($value['team']) || $value['id'] == $playerLeft[$i]) break;
-			}
-			// if the following is true, the inner loop did not break and the found player did not get logged as leaving, hence the winner
-			if ($i == $numLeft) {
-				$team = $value['team'];
-				foreach ($this->players as $player) { //  ($a = 0;$a < count($this->players);$a++) {
-					if ($player['team'] == $team) $this->players[$player['id']]['won'] = true;
-					else $this->players[$player['id']]['won'] = false;
-				}
-				break;
-			}
-		}*/
 	}
 	private function parseTimeStamp($string, &$numByte) {
-		$one = $this->readByte($string,$numByte); //$one[1];
-		if (($one & 3) > 0) { // check if value is two bytes
+		$one = $this->readByte($string,$numByte);
+		if (($one & 3) > 0) { // check if value is two bytes or more
 			$two = $this->readByte($string,$numByte);
-			//$two = unpack("v",substr($string,$numByte -1,2));
 			$two = ((($one >> 2) << 8) | $two);
 			if (($one & 3) >= 2) {
 				$tmp = $this->readByte($string,$numByte);			
-				$two = (($two  << 8) | $tmp);
+				$two = (($two << 8) | $tmp);
 				if (($one & 3) == 3) {
 					$tmp = $this->readByte($string,$numByte);			
 					$two = (($two  << 8) | $tmp);
