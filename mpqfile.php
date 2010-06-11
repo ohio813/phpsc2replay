@@ -41,7 +41,7 @@ class MPQFile {
 	private $debugNewline;
 	private $gameLen;
 	
-	function __construct($filename, $autoparse = true, $debug = false) {
+	function __construct($filename, $autoparse = true, $debug = 0) {
 		$this->filename = $filename;
 		$this->hashtable = NULL;
 		$this->blocktable = NULL;
@@ -130,7 +130,20 @@ class MPQFile {
 		for ($i = 0;$i < $hashSize;$i++)
 			$tmp[$i] = $this->readUInt32();
 		$hashTable = decryptStuff($tmp,hashStuff("(hash table)", MPQ_HASH_FILE_KEY));
-		
+		if ($this->debug) {
+			$this->debug("DEBUG: Hash table");
+			$this->debug("HashA, HashB, Language+platform, Fileblockindex");
+			$tmpnewline = $this->debugNewline;
+			$this->debugNewline = "";
+			for ($i = 0;$i < $hashTableEntries;$i++) {
+				$filehashA = $hashTable[$i*4];
+				$filehashB = $hashTable[$i*4 +1];
+				$lanplat = $hashTable[$i*4 +2];
+				$blockindex = $hashTable[$i*4 +3];
+				$this->debug(sprintf("<pre>%08X %08X %08X %08X</pre>",$filehashA, $filehashB, $lanplat, $blockindex));
+			}
+			$this->debugNewline = $tmpnewline;
+		}		
 		// read and decode the block table
 		fseek($this->fp, $blockTableOffset);
 		$blockSize = $blockTableEntries * 4; // block table size in 4-byte chunks
@@ -140,6 +153,21 @@ class MPQFile {
 		$blockTable = decryptStuff($tmp,hashStuff("(block table)", MPQ_HASH_FILE_KEY));		
 		$this->hashtable = $hashTable;
 		$this->blocktable = $blockTable;
+		if ($this->debug) {
+			$this->debug("DEBUG: Block table");
+			$this->debug("Offset, Blocksize, Filesize, flags");
+			$tmpnewline = $this->debugNewline;
+			$this->debugNewline = "";
+			for ($i = 0;$i < $blockTableEntries;$i++) {
+				$blockIndex = $i * 4;
+				$blockOffset = $this->blocktable[$blockIndex] + $this->headerOffset;
+				$blockSize = $this->blocktable[$blockIndex + 1];
+				$fileSize = $this->blocktable[$blockIndex + 2];
+				$flags = $this->blocktable[$blockIndex + 3];
+				$this->debug(sprintf("<pre>%08X %8d %8d %08X</pre>",$blockOffset, $blockSize, $fileSize, $flags));
+			}
+			$this->debugNewline = $tmpnewline;
+		}
 		$this->init = MPQFILE_PARSE_OK;
 
 		return true;
@@ -278,7 +306,7 @@ class MPQFile {
 		}
 		if (class_exists("SC2Replay") || (include 'sc2replay.php')) {
 			$tmp = new SC2Replay();
-			if ($this->debug) $tmp->setDebug(true);
+			if ($this->debug) $tmp->setDebug($this->debug);
 			$tmp->parseReplay($this);
 			return $tmp;
 		}

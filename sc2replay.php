@@ -80,7 +80,7 @@ class SC2Replay {
 	}
 	private function debug($message) { echo $message.($this->debugNewline); }
 	function setDebugNewline($str) { $this->debugNewline = $str; }
-	function setDebug($bool) { $this->debug = $bool; }
+	function setDebug($num) { $this->debug = $num; }
 	function getPlayers() { return $this->players; }
 	function getMapName() { return $this->mapName; }
 	function getGameSpeed() { return $this->gameSpeed; }
@@ -355,12 +355,14 @@ class SC2Replay {
 			$eventCode = $this->readByte($string,$numByte);
 			$time += $timeStamp;
 			// weird timestamp values mean that there's likely a problem with the alignment of the parse(too few/too many bytes read for an eventcode)
-			if ($this->debug) {
+			if ($this->debug >= 2) {
+				if ($len - $numByte > 24) {
 				$bytes = unpack("C24",substr($string,$numByte,24));
 				$dataBytes = "";
 				for ($i = 1;$i <= 24;$i++) $dataBytes .= sprintf("%02X",$bytes[$i]);
 				$this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X, Data: %s<br />\n",
 					$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte,$dataBytes));
+				}
 			}
 			switch ($eventType) {
 				case 0x00: // initialization

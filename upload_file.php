@@ -113,7 +113,7 @@ if (isset($_FILES['userfile'])) {
 	if ($err !== true) {
 		if (class_exists("MPQFile") || (include 'mpqfile.php')) {
 			$start = microtime_float();
-			$a = new MPQFile($tmpname,true,(($_POST['debug'] == 1)?"true":false));
+			$a = new MPQFile($tmpname,true,(($_POST['debug'] == 1)?1:0));
 			$init = $a->getState();
 
 			if ($init == MPQ_ERR_NOTMPQFILE)
