@@ -172,7 +172,7 @@ if (isset($_FILES['userfile'])) {
 					}
 					echo "</tr>\n";
 					foreach ($t as $value) {
-						echo sprintf("<tr><td>%d sec</td>",$value['t'] / 64);
+						echo sprintf("<tr><td>%d sec</td>",$value['t'] / 16);
 						foreach ($tmp as $value2) {
 							if ($value2['party'] == 0) continue;
 							if ($value['p'] == $value2['id'])

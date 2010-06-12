@@ -331,7 +331,7 @@ class SC2Replay {
 				if ($opcode == 0x0a) $messageLength += 64;
 				$message = $this->readBytes($string,$numByte,$messageLength);
 				$messages[] = array('id' => $playerId, 'name' => $this->players[$playerId]['sName'], 'target' => $messageTarget,
-									'time' => floor($totTime / 64), 'message' => $message);
+									'time' => floor($totTime / 16), 'message' => $message);
 			}
 			else if ($opcode == 0x83) { // ping on map? 9 bytes?
 				$numByte += 9;
@@ -405,7 +405,7 @@ class SC2Replay {
 								$data .= $this->readByte($string,$numByte);
 							// update apm array
 							$this->players[$playerId]['apmtotal']++;
-							$this->players[$playerId]['apm'][floor($time / 64)]++;
+							$this->players[$playerId]['apm'][floor($time / 16)]++;
 							break;
 						case 0x2F: // player sends resources
 							$numByte += 17; // data is 17 bytes long
@@ -464,7 +464,7 @@ class SC2Replay {
 							//update apm fields
 							if ($eventCode == 0xAC) {
 								$this->players[$playerId]['apmtotal']++;
-								$this->players[$playerId]['apm'][floor($time / 64)]++;
+								$this->players[$playerId]['apm'][floor($time / 16)]++;
 							}
 							break;
 						case 0x0D: // manually uses hotkey
@@ -485,7 +485,7 @@ class SC2Replay {
 							$numByte += $extraExtraByte;
 							// update apm
 							$this->players[$playerId]['apmtotal']++;
-							$this->players[$playerId]['apm'][floor($time / 64)]++;
+							$this->players[$playerId]['apm'][floor($time / 16)]++;
 							break;
 						case 0x1F: // no idea
 							$numByte += 17; // 84 00 00 0c 84 00 00 00 80 00 00 00 80 00 00 00 00
@@ -583,7 +583,7 @@ class SC2Replay {
 		$one = $this->readByte($string,$numByte);
 		if (($one & 3) > 0) { // check if value is two bytes or more
 			$two = $this->readByte($string,$numByte);
-			$two = ((($one & 0xFC ) << 8) | $two);
+			$two = ((($one >> 2 ) << 8) | $two);
 			if (($one & 3) >= 2) {
 				$tmp = $this->readByte($string,$numByte);			
 				$two = (($two << 8) | $tmp);
@@ -594,7 +594,7 @@ class SC2Replay {
 			}
 			return $two;
 		}
-		return $one;
+		return ($one >> 2);
 	}
 
 	// gets the literal string from the sc2_abilitycodes array based on the ability code
