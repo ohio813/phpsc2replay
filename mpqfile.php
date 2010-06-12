@@ -369,7 +369,7 @@ function uPlus($o1, $o2) {
 	$ol = $o1l + $o2l;
 	$oh = $o1h + $o2h;
 	if ($ol > 0xFFFF) { $oh += (($ol >> 16) & 0xFFFF); }
-	return ((($oh << 16) & 0xFFFF0000) | ($ol & 0xFFFF));
+	return ((($oh << 16) & (0xFFFF << 16)) | ($ol & 0xFFFF));
 }
 
 // right shift without preserving the sign(leftmost) bit
@@ -400,14 +400,14 @@ function decryptStuff($data, $key) {
 		$seed = uPlus($seed,$cryptTable[0x400 + ($key & 0xFF)]);
 		$ch = $data[$i] ^ (uPlus($key,$seed));
 
-		$data[$i] = $ch;
+		$data[$i] = $ch & ((0xFFFF << 16) | 0xFFFF);
 
 		$key = (uPlus(((~$key) << 0x15), 0x11111111)) | (rShift($key,0x0B));
 		$seed = uPlus(uPlus(uPlus($ch,$seed),($seed << 5)),3);
 	}
 	return $data;
 }
-
+global $cryptTable;
 $cryptTable = initCryptTable();
 
 ?>
