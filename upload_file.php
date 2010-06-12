@@ -71,8 +71,8 @@ function createAPMImage($vals, $length, $fn) {
 	imagestringup($frame,4,5,$height - 15,"APM -->",$lineColor);
 	imagestring($frame,4,55,$height + 20,"Time (minutes)",$lineColor);
 	imagestring($frame,2,25,$height - 15,"0",$lineColor);
-	imagestring($frame,2,20,($height / 2),$maxapm / 2,$lineColor);
-	imagestring($frame,2,20,0,$maxapm,$lineColor);
+	imagestring($frame,2,20,($height / 2),floor($maxapm / 2),$lineColor);
+	imagestring($frame,2,20,0,floor($maxapm),$lineColor);
 	$lengthMins = ($length / 60);
 	for ($i = 0;$i < $lengthMins;$i+=5) {
 		imagestring($frame,2,40+($width / ($lengthMins / 5) * ($i / 5)),$height + 5,$i,$lineColor);
@@ -113,7 +113,10 @@ if (isset($_FILES['userfile'])) {
 	if ($err !== true) {
 		if (class_exists("MPQFile") || (include 'mpqfile.php')) {
 			$start = microtime_float();
-			$a = new MPQFile($tmpname,true,(($_POST['debug'] == 1)?1:0));
+			if ($_POST['debug'] == 1) {
+				echo sprintf("<b>Debugging is on.</b><br />\n");
+			}
+			$a = new MPQFile($tmpname,true,(($_POST['debug'] == 1)?2:0));
 			$init = $a->getState();
 
 			if ($init == MPQ_ERR_NOTMPQFILE)
@@ -123,10 +126,6 @@ if (isset($_FILES['userfile'])) {
 			else {
 				echo sprintf("Major version %d, build %d<br />\n",$a->getVersion(),$a->getBuild());
 				$b = $a->parseReplay();
-				if ($_POST['debug'] == 1) {
-					echo sprintf("<b>Debugging is on.</b><br />\n");
-					$b->setDebug(true);
-				}
 				$tmp = $b->getPlayers();
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
@@ -136,10 +135,21 @@ if (isset($_FILES['userfile'])) {
 				foreach($tmp as $value) {
 					$wincolor = ($value['won'] == 1)?0x00FF00:0xFF0000;
 					echo sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
-									$value['sName'],$value['lName'],$value['race'],$value['color'],$value['sColor'],(($value['party'] > 0)?"Team ".$value['party']:"-"),round($value['apmtotal'] / ($b->getGameLength() / 60)),((isset($value['won']))?$wincolor:0xFFFFFF),(isset($value['won']))?$value['won']:(($value['party'] > 0)?"Unknown":"-"));
-					$apmFileName = $value['id']."_".md5($name).".png";
-					createAPMImage($value['apm'],$b->getGameLength(),$apmFileName);
-					$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['sName']);
+									$value['sName'],
+									$value['lName'],
+									$value['race'],
+									$value['color'],
+									$value['sColor'],
+									($value['party'] > 0)?"Team ".$value['party']:"-",
+									($value['party'] > 0)?(round($value['apmtotal'] / ($b->getGameLength() / 60))):0,
+									((isset($value['won']))?$wincolor:0xFFFFFF),
+									(isset($value['won']))?$value['won']:(($value['party'] > 0)?"Unknown":"-")
+								);
+					if ($value['party'] > 0) {
+						$apmFileName = $value['id']."_".md5($name).".png";
+						createAPMImage($value['apm'],$b->getGameLength(),$apmFileName);
+						$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['sName']);
+					}
 				}
 				echo "</table><br />";
 				$messages = $b->getMessages();

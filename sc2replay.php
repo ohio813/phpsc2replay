@@ -325,16 +325,18 @@ class SC2Replay {
 			$totTime += $timestamp;
 			if ($opcode == 0x80) // header weird thingy?
 				$numByte += 4;
-			else if ($opcode == 0x00 || $opcode == 0x02) { // message
-				$messageTarget = $opcode;
+			else if ($opcode == 0x00 || $opcode == 0x02 || $opcode == 0x0a) { // message
+				$messageTarget = $opcode & 3;
 				$messageLength = $this->readByte($string,$numByte);
+				if ($opcode == 0x0a) $messageLength += 64;
 				$message = $this->readBytes($string,$numByte,$messageLength);
 				$messages[] = array('id' => $playerId, 'name' => $this->players[$playerId]['sName'], 'target' => $messageTarget,
-									'time' => floor($totTime / 16), 'message' => $message);
+									'time' => floor($totTime / 64), 'message' => $message);
 			}
 			else if ($opcode == 0x83) { // ping on map? 9 bytes?
 				$numByte += 9;
 			}
+
 		}
 		$this->messages = $messages;
 	}
@@ -581,7 +583,7 @@ class SC2Replay {
 		$one = $this->readByte($string,$numByte);
 		if (($one & 3) > 0) { // check if value is two bytes or more
 			$two = $this->readByte($string,$numByte);
-			$two = ((($one >> 2) << 8) | $two);
+			$two = ((($one & 0xFC ) << 8) | $two);
 			if (($one & 3) >= 2) {
 				$tmp = $this->readByte($string,$numByte);			
 				$two = (($two << 8) | $tmp);
@@ -594,6 +596,7 @@ class SC2Replay {
 		}
 		return $one;
 	}
+
 	// gets the literal string from the sc2_abilitycodes array based on the ability code
 	// returns false if the variable doesn't exist or the file cannot be included
 	function getAbilityString($num) {
