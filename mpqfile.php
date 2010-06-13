@@ -40,6 +40,7 @@ class MPQFile {
 	private $debug;
 	private $debugNewline;
 	private $gameLen;
+	public static $cryptTable;
 	
 	function __construct($filename, $autoparse = true, $debug = 0) {
 		$this->filename = $filename;
@@ -55,6 +56,8 @@ class MPQFile {
 		$this->sectorSize = 0;
 		$this->debug = $debug;
 		$this->debugNewline = "<br />\n";
+		if (!self::$cryptTable)
+			self::initCryptTable();
 		
 		if (file_exists($this->filename)) {
 			$this->fp = fopen($this->filename, 'rb');
@@ -129,7 +132,7 @@ class MPQFile {
 		$tmp = array();
 		for ($i = 0;$i < $hashSize;$i++)
 			$tmp[$i] = $this->readUInt32();
-		$hashTable = decryptStuff($tmp,hashStuff("(hash table)", MPQ_HASH_FILE_KEY));
+		$hashTable = self::decryptStuff($tmp,self::hashStuff("(hash table)", MPQ_HASH_FILE_KEY));
 		if ($this->debug) {
 			$this->debug("DEBUG: Hash table");
 			$this->debug("HashA, HashB, Language+platform, Fileblockindex");
@@ -150,7 +153,7 @@ class MPQFile {
 		$tmp = array();
 		for ($i = 0;$i < $blockSize;$i++)
 			$tmp[$i] = $this->readUInt32();
-		$blockTable = decryptStuff($tmp,hashStuff("(block table)", MPQ_HASH_FILE_KEY));		
+		$blockTable = self::decryptStuff($tmp,self::hashStuff("(block table)", MPQ_HASH_FILE_KEY));		
 		$this->hashtable = $hashTable;
 		$this->blocktable = $blockTable;
 		if ($this->debug) {
@@ -203,9 +206,9 @@ class MPQFile {
 			if ($this->debug) $this->debug("Tried to use getFileSize without initializing");
 			return false;
 		}
-		$hashA = hashStuff($filename, MPQ_HASH_NAME_A);
-		$hashB = hashStuff($filename, MPQ_HASH_NAME_B);
-		$hashStart = hashStuff($filename, MPQ_HASH_TABLE_OFFSET) & ($this->hashTableSize - 1);
+		$hashA = self::hashStuff($filename, MPQ_HASH_NAME_A);
+		$hashB = self::hashStuff($filename, MPQ_HASH_NAME_B);
+		$hashStart = self::hashStuff($filename, MPQ_HASH_TABLE_OFFSET) & ($this->hashTableSize - 1);
 		$tmp = $hashStart;
 		do {
 			if (($this->hashtable[$tmp*4 + 3] == MPQ_HASH_ENTRY_DELETED) || ($this->hashtable[$tmp*4 + 3] == MPQ_HASH_ENTRY_EMPTY)) return false;
@@ -225,9 +228,9 @@ class MPQFile {
 			if ($this->debug) $this->debug("Tried to use getFile without initializing");
 			return false;
 		}
-		$hashA = hashStuff($filename, MPQ_HASH_NAME_A);
-		$hashB = hashStuff($filename, MPQ_HASH_NAME_B);
-		$hashStart = hashStuff($filename, MPQ_HASH_TABLE_OFFSET) & ($this->hashTableSize - 1);
+		$hashA = self::hashStuff($filename, MPQ_HASH_NAME_A);
+		$hashB = self::hashStuff($filename, MPQ_HASH_NAME_B);
+		$hashStart = self::hashStuff($filename, MPQ_HASH_TABLE_OFFSET) & ($this->hashTableSize - 1);
 		$tmp = $hashStart;
 		$blockSize = -1;
 		do {
@@ -282,7 +285,7 @@ class MPQFile {
 				$compressionType = $this->readSByte($sectorData);
 				switch ($compressionType) {
 					case 2:
-						$output .= deflate_decompress($sectorData);
+						$output .= self::deflate_decompress($sectorData);
 						break;
 					default:
 						if ($this->debug) $this->debug(sprintf("Unknown compression type: %d",$compressionType));
@@ -322,40 +325,69 @@ class MPQFile {
 	function getBuild() { return $this->build; }
 	function getVersion() { return $this->verMajor; }
 	function getGameLength() { return $this->gameLen; }
-}
-function deflate_decompress($string) {
-	if (function_exists("gzinflate")){
-		$tmp = gzinflate(substr($string,2,strlen($string) - 2));
-		return $tmp;
+	static function deflate_decompress($string) {
+		if (function_exists("gzinflate")){
+			$tmp = gzinflate(substr($string,2,strlen($string) - 2));
+			return $tmp;
+		}
+		if ($this->debug) $this->debug("Function 'gzinflate' does not exist, is gzlib installed as a module?");
+		return false;
 	}
-	if ($this->debug) $this->debug("Function 'gzinflate' does not exist, is gzlib installed as a module?");
-	return false;
-}
 
 
-function microtime_float() {
-    list($usec, $sec) = explode(" ", microtime());
-    return ((float)$usec + (float)$sec);
-}
-
-function initCryptTable() {
-	$cryptTable = array();
-	$seed = 0x00100001;
-	$index1 = 0;
-	$index2 = 0;
-	
-	for ($index1 = 0; $index1 < 0x100; $index1++) {
-		for ($index2 = $index1, $i = 0; $i < 5; $i++, $index2 += 0x100) {
-			$seed = (uPlus($seed * 125,3)) % 0x2AAAAB;
-			$temp1 = ($seed & 0xFFFF) << 0x10;
-			
-			$seed = (uPlus($seed * 125,3)) % 0x2AAAAB;
-			$temp2 = ($seed & 0xFFFF);
-			
-			$cryptTable[$index2] = ($temp1 | $temp2);
+	static function initCryptTable() {
+		if (!self::$cryptTable)
+			self::$cryptTable = array();
+		$seed = 0x00100001;
+		$index1 = 0;
+		$index2 = 0;
+		
+		for ($index1 = 0; $index1 < 0x100; $index1++) {
+			for ($index2 = $index1, $i = 0; $i < 5; $i++, $index2 += 0x100) {
+				$seed = (uPlus($seed * 125,3)) % 0x2AAAAB;
+				$temp1 = ($seed & 0xFFFF) << 0x10;
+				
+				$seed = (uPlus($seed * 125,3)) % 0x2AAAAB;
+				$temp2 = ($seed & 0xFFFF);
+				
+				self::$cryptTable[$index2] = ($temp1 | $temp2);
+			}
 		}
 	}
-	return $cryptTable;
+
+	static function hashStuff($string, $hashType) {
+		$seed1 = 0x7FED7FED;
+		$seed2 = ((0xEEEE << 16) | 0xEEEE);
+		$strLen = strlen($string);
+		
+		for ($i = 0;$i < $strLen;$i++) {
+			$next = ord(strtoupper(substr($string, $i, 1)));
+
+			$seed1 = self::$cryptTable[($hashType << 8) + $next] ^ (uPlus($seed1,$seed2));
+			$seed2 = uPlus(uPlus(uPlus(uPlus($next,$seed1),$seed2),$seed2 << 5),3);
+		}
+		return $seed1;
+	}
+
+	static function decryptStuff($data, $key) {
+		$seed = ((0xEEEE << 16) | 0xEEEE);
+		$datalen = count($data);
+		for($i = 0;$i < $datalen;$i++) {
+			$seed = uPlus($seed,self::$cryptTable[0x400 + ($key & 0xFF)]);
+			$ch = $data[$i] ^ (uPlus($key,$seed));
+
+			$data[$i] = $ch & ((0xFFFF << 16) | 0xFFFF);
+
+			$key = (uPlus(((~$key) << 0x15), 0x11111111)) | (rShift($key,0x0B));
+			$seed = uPlus(uPlus(uPlus($ch,$seed),($seed << 5)),3);
+		}
+		return $data;
+	}
+}
+
+function microtime_float() {
+	list($usec, $sec) = explode(" ", microtime());
+	return ((float)$usec + (float)$sec);
 }
 
 // function that adds up two integers without allowing them to overflow to floats
@@ -376,38 +408,5 @@ function uPlus($o1, $o2) {
 function rShift($num,$bits) {
 	return (($num >> 1) & 0x7FFFFFFF) >> ($bits - 1);
 }
-
-function hashStuff($string, $hashType) {
-	global $cryptTable;
-	$seed1 = 0x7FED7FED;
-	$seed2 = ((0xEEEE << 16) | 0xEEEE);
-	$strLen = strlen($string);
-	
-	for ($i = 0;$i < $strLen;$i++) {
-		$next = ord(strtoupper(substr($string, $i, 1)));
-
-		$seed1 = $cryptTable[($hashType << 8) + $next] ^ (uPlus($seed1,$seed2));
-		$seed2 = uPlus(uPlus(uPlus(uPlus($next,$seed1),$seed2),$seed2 << 5),3);
-	}
-	return $seed1;
-}
-
-function decryptStuff($data, $key) {
-	global $cryptTable;
-	$seed = ((0xEEEE << 16) | 0xEEEE);
-	$datalen = count($data);
-	for($i = 0;$i < $datalen;$i++) {
-		$seed = uPlus($seed,$cryptTable[0x400 + ($key & 0xFF)]);
-		$ch = $data[$i] ^ (uPlus($key,$seed));
-
-		$data[$i] = $ch & ((0xFFFF << 16) | 0xFFFF);
-
-		$key = (uPlus(((~$key) << 0x15), 0x11111111)) | (rShift($key,0x0B));
-		$seed = uPlus(uPlus(uPlus($ch,$seed),($seed << 5)),3);
-	}
-	return $data;
-}
-global $cryptTable;
-$cryptTable = initCryptTable();
 
 ?>
