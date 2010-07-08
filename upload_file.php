@@ -133,12 +133,11 @@ if (isset($_FILES['userfile'])) {
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				
 				$apmString = "<b>APM graphs</b><br />\n";
-				echo "<table border=\"1\"><tr><th>Player name</th><th>Long name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
+				echo "<table border=\"1\"><tr><th>Player name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
 				foreach($tmp as $value) {
 					$wincolor = ($value['won'] == 1)?0x00FF00:0xFF0000;
-					echo sprintf("<tr><td>%s</td><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
+					echo sprintf("<tr><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
 									$value['sName'],
-									$value['lName'],
 									$value['race'],
 									$value['color'],
 									$value['sColor'],

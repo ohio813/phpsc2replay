@@ -495,13 +495,14 @@ class SC2Replay {
 						case 0x8D:
 						case 0x9D:
 							$byte1 = $this->readByte($string,$numByte);
-							if ($byte1 >= 8) {
-								$byte2 = $this->readByte($string,$numByte);
-								$extraBytes = floor($byte1 / 8);
-								$numByte += $extraBytes;
-								$extraExtraByte = ((($byte1 & 4) == 4) && (($byte2 & 3) == 3))?1:0;
-								$numByte += $extraExtraByte;
-							}
+							$byte2 = $this->readByte($string,$numByte);
+							$numByte--;
+							$extraBytes = floor($byte1 / 8);
+							$numByte += $extraBytes;
+							if (($byte1 & 4) && (($byte2 & 6) == 6))
+								$numByte += 2;
+							else if ($byte1 & 4)
+								$numByte += 1;
 							// update apm
 							$this->players[$playerId]['apmtotal']++;
 							$this->players[$playerId]['apm'][floor($time / 16)]++;
@@ -539,6 +540,8 @@ class SC2Replay {
 						case 0x71:
 						case 0x81:
 						case 0x91:
+						case 0xA1:
+						case 0xB1:
 						case 0xC1:
 						case 0xD1:
 						case 0xE1:
