@@ -108,7 +108,7 @@ class SC2Replay {
 		$numByte = 0;
 		$numByte += 6; 
 		$numPlayers = $this->readByte($string,$numByte) / 2;
-		for ($i = 1; $i <= $numPlayers;$i++) {
+		for ($i = 0; $i < $numPlayers;$i++) {
 			$p = $this->parsePlayerStruct($string,$numByte);
 			if ($p !== NULL) {
 				$p['id'] = $i;
@@ -147,17 +147,16 @@ class SC2Replay {
 				$hadKey = true; 
 				$keys[$key[1]] = $this->parseKeyVal($string,$numByte); 
 			}
-			else if ($key[1] == 4 && $key[2] == 2) { break; }
+			else if ($key[1] == 6 && $key[2] == 2) { break; }
 		}
 		if ($this->debug) {
 			foreach ($keys as $k => $v)
-				$this->debug("Got pre-race($sName) key: $k, value: $v");
+				$this->debug("Got pre-longname($sName) key: $k, value: $v");
 		}
-/*		$lNameLen = $this->readByte($string,$numByte) / 2;
+		$lNameLen = $this->readByte($string,$numByte) / 2;
 		if ($lNameLen > 0) $lName = $this->readBytes($string,$numByte,$lNameLen);
 		else $lName = NULL;
-		*/
-		//$numByte += 2; // 04 02
+		$numByte += 2; // 04 02
 		$raceLen = $this->readByte($string,$numByte) / 2;
 		if ($raceLen > 0) $race = $this->readBytes($string,$numByte,$raceLen);
 		else $race = NULL;
@@ -170,25 +169,26 @@ class SC2Replay {
 			if ($key[2] == 9) { 
 				$hadKey = true;
 				$keyVal = $this->parseKeyVal($string,$numByte);
-				if ($key[1] == 2) { $cR = $keyVal / 2; } // red color
-				if ($key[1] == 4) { $cG = $keyVal / 2; } // green color
-				if ($key[1] == 6) { $cB = $keyVal / 2; } // blue color
+				if ($key[1] == 2) { $cR = $keyVal; } // red color
+				if ($key[1] == 4) { $cG = $keyVal; } // green color
+				if ($key[1] == 6) { $cB = $keyVal; } // blue color
 				if ($key[1] == 16) { $party = $keyVal / 2; } // party number?
 				if ($this->debug) $this->debug(sprintf("%s Key: %d, value: %d",$sName,$key[1], $keyVal));
 			}
 			else if ($key[1] == 5 && $key[2] == 18) {$numByte -= 2; break; } // next player
 			else if ($key[1] == 2 && $key[2] == 2) { break; } // end of player section
 		}
-		if (($sName === NULL)) {
+		if (($sName === NULL) && ($lName === NULL)) {
 			if ($this->debug) $this->debug("Got null player");
 			return NULL;
 		}
 		$p = array();
 		$p["sName"] = $sName;
+		$p["lName"] = $lName;
 		$p["race"] = $race;
 		$p["party"] = $party;
 		$p["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
-		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $lName, $race, $party, $p["color"]));
+		if ($this->debug) $this->debug(sprintf("Got player: %s (%s), Race: %s, Party: %s, Color: %s",$sName, $lName, $race, $party, $p["color"]));
 		return $p;
 	}
 	
@@ -264,8 +264,8 @@ class SC2Replay {
 		}
 	}
 	
-
-	/*private function parseKeyVal($string, &$numByte) {
+	// parse a key/value -pair struct in the replay.details file
+	private function parseKeyVal($string, &$numByte) {
 		$one = $this->readByte($string,$numByte); //$one[1];
 		if (($one & 192) > 0) { // check if value is two bytes
 			$two = unpack("v",substr($string,$numByte -1,2));
@@ -274,24 +274,7 @@ class SC2Replay {
 			return $two;
 		}
 		return $one;
-	}*/
-	// parse a key/value -pair struct in the replay.details file
-	private function parseKeyVal($string, &$numByte) {
-		$one = unpack("C",substr($string,$numByte,1)); 
-		$one = $one[1];
-		$retVal = $one & 0x7F;
-		$shift = 1;
-		$numByte++;
-		while (($one & 0x80) > 0) {
-			$one = unpack("C",substr($string,$numByte,1)); 
-			$one = $one[1];
-			$retVal = (($one & 0x7F) << $shift*7) | $retVal;
-			$shift++;
-			$numByte++;
-		}
-		return $retVal;
 	}
-	
 	private function readByte($string, &$numByte) {
 		$tmp = unpack("C",substr($string,$numByte,1));
 		$numByte++;
@@ -495,13 +478,11 @@ class SC2Replay {
 						case 0x8D:
 						case 0x9D:
 							$byte1 = $this->readByte($string,$numByte);
-							if ($byte1 >= 8) {
-								$byte2 = $this->readByte($string,$numByte);
-								$extraBytes = floor($byte1 / 8);
-								$numByte += $extraBytes;
-								$extraExtraByte = ((($byte1 & 4) == 4) && (($byte2 & 3) == 3))?1:0;
-								$numByte += $extraExtraByte;
-							}
+							$byte2 = $this->readByte($string,$numByte);
+							$extraBytes = floor($byte1 / 8);
+							$numByte += $extraBytes;
+							$extraExtraByte = ((($byte1 & 4) == 4) && (($byte2 & 3) == 3))?1:0;
+							$numByte += $extraExtraByte;
 							// update apm
 							$this->players[$playerId]['apmtotal']++;
 							$this->players[$playerId]['apm'][floor($time / 16)]++;
@@ -526,24 +507,8 @@ class SC2Replay {
 					break;
 				case 0x03: // replay
 					switch ($eventCode) {
-						case 0x87:
-							$numByte += 8;
-							break;
-						case 0x01:
-						case 0x11:						
-						case 0x21:
-						case 0x31:
-						case 0x41:
-						case 0x51:
-						case 0x61:
-						case 0x71:
-						case 0x81:
-						case 0x91:
-						case 0xC1:
-						case 0xD1:
-						case 0xE1:
-						case 0xF1:
-							$numByte += 4;
+						case 0x81: // player moves screen
+							$numByte += 20; // always 20 bytes
 							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
@@ -573,9 +538,6 @@ class SC2Replay {
 					switch($eventCode) {
 						case 0x89: //automatic synchronization?
 							$numByte += 4;
-							break;
-						case 0x09:
-							$numByte += 3;
 							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",

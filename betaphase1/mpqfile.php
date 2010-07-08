@@ -91,42 +91,7 @@ class MPQFile {
 				$headerOffset = $this->readUInt32();
 				$this->headerOffset = $headerOffset;
 				$uDataSize = $this->readUInt32();
-				//fseek($fp,5,SEEK_CUR); // skip 05 08 00 02 2c
-				//fseek($fp,24,SEEK_CUR); // skip Starcraft II replay 0x1B 0x32 0x01 0x00
-				//fseek($fp,25,SEEK_CUR); // skip Starcraft II replay 0x1B 0x31 0x31 0x02 0x05 0x0c
-				fseek($fp,30,SEEK_CUR);
-				$dataString = fread($fp,$uDataSize - 30);
-				$numByte = 0;
-				$loop = 0;
-				while ($numByte < ($uDataSize - 30)) {
-					$key = unpack("C2",substr($dataString,$numByte,2));
-					$numByte += 2;
-					$value = $this->parseKeyVal($dataString,$numByte);
-					if ($this->debug)
-						$this->debug(sprintf("User header key: %02X %02X value: %d",$key[1],$key[2],$value));
-					if ($loop == 0) {
-						switch ($key[1]) {
-							case 0x04: // major version
-								$this->verMajor = $value / 2;
-								break;
-							case 0x0A:
-								$this->build = $value / 2;
-								$loop++;
-								break;
-							default:
-						}
-					}
-					if ($loop == 1) {
-						switch ($key[1]) {
-							case 0x06:
-								$this->gameLen = ceil($value / 32);
-								break;
-							default:
-						}
-					}
-				}
-				
-				/*
+				fseek($fp,24,SEEK_CUR); // skip Starcraft II replay 0x1B 0x32 0x01 0x00
 				$verMajor =  $this->readUInt16();
 				$this->verMajor = $verMajor;
 				$build = $this->readUInt32(true);
@@ -135,7 +100,7 @@ class MPQFile {
 				fseek($fp,2,SEEK_CUR); // skip 02 00
 				$gameLen =  $this->readUInt16(true) / 2;
 				$this->gameLen = $gameLen;
-				*/
+				
 				fseek($fp,$headerOffset);
 			}
 			else if ($magic[4] == 26) { // header (1Ah)
@@ -314,17 +279,13 @@ class MPQFile {
 		$totDur = 0;
 		for ($i = 0;$i < $c;$i++) {
 			$sectorLen = $sectors[$i + 1] - $sectors[$i];
-			if ($sectorLen == 0) break;
 			fseek($this->fp,$blockOffset + $sectors[$i],SEEK_SET);
 			$sectorData = fread($this->fp,$sectorLen);
 			if ($flag_compressed && (($flag_singleunit && ($blockSize < $fileSize)) || ($flag_checksums && ($sectorLen <  $this->sectorSize)))) {
 				$compressionType = $this->readSByte($sectorData);
 				switch ($compressionType) {
-					case 0x02:
+					case 2:
 						$output .= self::deflate_decompress($sectorData);
-						break;
-					case 0x10:
-						$output .= self::bzip2_decompress($sectorData);
 						break;
 					default:
 						if ($this->debug) $this->debug(sprintf("Unknown compression type: %d",$compressionType));
@@ -364,36 +325,12 @@ class MPQFile {
 	function getBuild() { return $this->build; }
 	function getVersion() { return $this->verMajor; }
 	function getGameLength() { return $this->gameLen; }
-	private function parseKeyVal($string, &$numByte) {
-		$one = unpack("C",substr($string,$numByte,1)); 
-		$one = $one[1];
-		$retVal = $one & 0x7F;
-		$shift = 1;
-		$numByte++;
-		while (($one & 0x80) > 0) {
-			$one = unpack("C",substr($string,$numByte,1)); 
-			$one = $one[1];
-			$retVal = (($one & 0x7F) << $shift*7) | $retVal;
-			$shift++;
-			$numByte++;
-		}
-		return $retVal;
-	}
-	
 	static function deflate_decompress($string) {
 		if (function_exists("gzinflate")){
 			$tmp = gzinflate(substr($string,2,strlen($string) - 2));
 			return $tmp;
 		}
 		if ($this->debug) $this->debug("Function 'gzinflate' does not exist, is gzlib installed as a module?");
-		return false;
-	}
-	static function bzip2_decompress($string) {
-		if (function_exists("bzdecompress")){
-			$tmp = bzdecompress($string);
-			return $tmp;
-		}
-		if ($this->debug) $this->debug("Function 'bzdecompress' does not exist, is gzlib installed as a module?");
 		return false;
 	}
 
