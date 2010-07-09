@@ -38,6 +38,10 @@ function createAPMImage($vals, $length, $fn) {
 	$bgColorT = imagecolorallocatealpha($pic,255,255,255,127);
 	imagefill($pic,0,0,$bgColorT);
 	// first create x/y pairs
+	// do this by adding up the actions of the 60 seconds before the pixel
+	// if there are less than 60 seconds, extrapolate by multiplying with 60/$secs
+	// the time index corresponding to a pixel can be calculated using the $pixelsPerSecond variable,
+	// it should always be 0 < $pixelsPerSecond < 1
 	$xypair = array();
 	$maxapm = 0;
 	for ($x = 1;$x <= $width;$x++) {
@@ -57,12 +61,14 @@ function createAPMImage($vals, $length, $fn) {
 		$xypair[$x] = $apm;
 
 	}
-	// then draw them
-	if ($maxapm == 0)
+
+	// draw the pixels
+	if ($maxapm <= 0)
 		return;
 	for ($i = 2;$i <= $width;$i++) {
-		imageline($pic,$i - 1,$xypair[$i - 1] / $maxapm * $height, $i, $xypair[$i] / $maxapm * $height,$lineColor);
+		imageline($pic,$i - 1,$height - $xypair[$i - 1] / $maxapm * $height, $i,$height - $xypair[$i] / $maxapm * $height,$lineColor);
 	}
+	// build a seperate container image 
 	$frame = imagecreatetruecolor($width +50,$height+50);
 	imagefill($frame,0,0,$bgColor);
 	
@@ -81,6 +87,7 @@ function createAPMImage($vals, $length, $fn) {
 		if ($i > 0)
 			imageline($frame,40+($width / ($lengthMins / 5) * ($i / 5)),0,40+($width / ($lengthMins / 5) * ($i / 5)),$height, $lineColorGrey);		
 	}
+	// copy the graph onto the container image and save it
 	imagecopy($frame,$pic,40,0,0,0,$width,$height);
 	imagepng($frame,$fn);
 	imagedestroy($frame);

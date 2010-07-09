@@ -375,13 +375,13 @@ class SC2Replay {
 			$time += $timeStamp;
 			// weird timestamp values mean that there's likely a problem with the alignment of the parse(too few/too many bytes read for an eventcode)
 			if ($this->debug >= 2) {
-				if ($len - $numByte > 24) {
-				$bytes = unpack("C24",substr($string,$numByte,24));
-				$dataBytes = "";
-				for ($i = 1;$i <= 24;$i++) $dataBytes .= sprintf("%02X",$bytes[$i]);
-				$this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X, Data: %s<br />\n",
-					$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte,$dataBytes));
-				}
+//				if ($len - $numByte > 24) {
+//				$bytes = unpack("C24",substr($string,$numByte,24));
+//				$dataBytes = "";
+//				for ($i = 1;$i <= 24;$i++) $dataBytes .= sprintf("%02X",$bytes[$i]);
+				$this->debug(sprintf("DEBUG L2: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+					$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
+//				}
 			}
 			switch ($eventType) {
 				case 0x00: // initialization
@@ -495,8 +495,10 @@ class SC2Replay {
 						case 0x8D:
 						case 0x9D:
 							$byte1 = $this->readByte($string,$numByte);
-							$byte2 = $this->readByte($string,$numByte);
-							$numByte--;
+							if ($numByte < $len) {
+								$byte2 = $this->readByte($string,$numByte);
+								$numByte--;
+							}
 							$extraBytes = floor($byte1 / 8);
 							$numByte += $extraBytes;
 							if (($byte1 & 4) && (($byte2 & 6) == 6))
@@ -546,7 +548,10 @@ class SC2Replay {
 						case 0xD1:
 						case 0xE1:
 						case 0xF1:
-							$numByte += 4;
+							$numByte += 3;
+							$lastByte = $this->readByte($string,$numByte);
+							if (($lastByte & 0xF0) == 0xC0)
+								$numByte += 2;
 							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
