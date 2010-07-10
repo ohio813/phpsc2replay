@@ -521,7 +521,10 @@ class SC2Replay {
 					switch($eventCode) {
 						case 0x06:
 							$numByte += 8; // 00 00 00 04 00 00 00 04
-						break;
+							break;
+						case 0x07:
+							$numByte += 4;
+							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
 								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
@@ -648,13 +651,8 @@ class SC2Replay {
 	function getAbilityString($num) {
 		global $sc2_abilityCodes;
 		if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {
-			if ($this->build >= 15449) {
-				$num -= 0x400;
-				if ((($num & 0x06FD00) == 0x06FD00) || (($num & 0x08F000) == 0x08F000))
-					$num -= 0x00F000;
-			}
-			if ($this->debug) return sprintf("%s (%06X)",$sc2_abilityCodes[$num],$num);
-			else return $sc2_abilityCodes[$num];
+			if ($this->debug) return sprintf("%s (%06X)",$sc2_abilityCodes[$num]['desc'],$num);
+			else return $sc2_abilityCodes[$num]['desc'];
 		}
 		return false;
 	}
