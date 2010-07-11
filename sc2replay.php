@@ -13,8 +13,6 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-define("MPQ_ERR_LOWREPLAYVERSION", -1);
-
 class SC2Replay {
 	public static $gameSpeeds = array(0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
 	public static $gameSpeedCE = array(0 => 39, 1=> 44, 2=> 60, 3=> 64, 4=> 64); // estimates, weird values
@@ -44,12 +42,12 @@ class SC2Replay {
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
-		if (!is_a($mpqfile, "MPQFile")) return false;
-		$this->gameLength = $mpqfile->getGameLength();
-		if ($mpqfile->getBuild() < 15097) {
-			if ($this->debug) $this->debug("Too low replay version");
-			return MPQ_ERR_LOWREPLAYVERSION; //demo format changed at patch 9, no support for older ones
+		if (!($mpqfile instanceof MPQFile) || !$mpqfile->isParsed()) return false;
+		// include utility class if it is available and not loaded already
+		if (!class_exists('SC2ReplayUtils') && (file_exists('sc2replayutils.php'))) {
+			include 'sc2replayutils.php';
 		}
+		$this->gameLength = $mpqfile->getGameLength();
 		$this->version = $mpqfile->getVersion();
 		$this->build = $mpqfile->getBuild();
 		// first parse replay.details file
@@ -62,19 +60,15 @@ class SC2Replay {
 		$file = $mpqfile->readFile("replay.attributes.events");
 		if ($file !== false) {
 			$this->parseAttributesFile($file);
-// 			the following is fallback game length calculation, left here in case the value in mpq header ever breaks or goes away
-//			$fs = $mpqfile->getFileSize("replay.sync.events");
-//			if ($fs !== false) $this->gameLength = $fs / self::$gameSpeedCE[$this->gameSpeed]; 
-// sync event is 4 bytes, with a sync window of 1/8th to 1/16th of a second <---- UNCERTAIN, a theory
 		}
 		else if ($this->debug) $this->debug("Error reading the replay.attributes.events file");
 		
 		$file = $mpqfile->readFile("replay.game.events");
-		if (file !== false) $this->parseGameEventsFile($file);
+		if ($file !== false) $this->parseGameEventsFile($file);
 		else if ($this->debug) $this->debug("Error reading the replay.game.events file");
 		
 		$file = $mpqfile->readFile("replay.message.events");
-		if (file !== false) $this->parseChatLog($file);
+		if ($file !== false) $this->parseChatLog($file);
 		else if ($this->debug) $this->debug("Error reading the replay.message.events file");
 		
 	}
@@ -94,6 +88,7 @@ class SC2Replay {
 		return $this->getFormattedSecs($this->gameLength);
 	}
 	function getFormattedSecs($secs) {
+		$o = "";
 		$hrs = floor($secs / 3600);
 		$mins = floor($secs / 60);
 		$secs = $secs % 60;
@@ -187,11 +182,19 @@ class SC2Replay {
 			return NULL;
 		}
 		$p = array();
-		$p["sName"] = $sName;
-		$p["race"] = $race;
+		$p["sName"] = $sName; // deprecated array value before there was only a short name
+		$p["name"] = $sName; // player name
+		$p["race"] = $race; // player race
 		$p["party"] = $party;
+		$p["team"] = $party;
 		$p["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
-		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $lName, $race, $party, $p["color"]));
+		$p["apmtotal"] = 0;
+		$p["apm"] = array();
+		$p["firstevents"] = array();
+		$p["numevents"] = array();
+		$p["ptype"] = "";
+		$p["handicap"] = 0;
+		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $p["color"]));
 		return $p;
 	}
 	
@@ -216,32 +219,32 @@ class SC2Replay {
 			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d (%s), attribVal = \"%s\"",
 							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["sName"]),$attribVal));
 			switch ($attributeId) {
-				case 0x07D3: // team, VERY uncertain because of gazillion other 0x07DX values
+/*				case 0x07D3: // team, VERY uncertain because of gazillion other 0x07DX values
 					$this->players[$playerId]["team"] = intval(substr($attribVal,1));
 					break;
+*/
 				case 0x0BBB: // handicap
 					$this->players[$playerId]["handicap"] = $attribVal;
 					break;
+				case 0x0BBC: // difficulty level (of computer player, Medi for humans)
+					$this->players[$playerId]["difficulty"] = $attribVal;
+					break;
 				case 0x0BB8: // game speed
-					if ($this->build >= 15449) {
-						switch ($attribVal) {
-							case "Fasr":
-								$tmp = 4;
-								break;
-							case "Fast":
-								$tmp = 3;
-								break;
-							default:
-								$tmp = 2;
-						}
-						$this->gameSpeed = $tmp;
+					switch ($attribVal) {
+						case "Fasr":
+							$tmp = 4;
+							break;
+						case "Fast":
+							$tmp = 3;
+							break;
+						default:
+							$tmp = 2;
 					}
-					else {
-						$this->gameSpeed = intval($attribVal);
-					}
+					$this->gameSpeed = $tmp;
 					break;
 				case 0x01F4: // player type, Humn or Comp
-					$this->players[$playerId]["ptype"] = $attribVal;
+					$this->players[$playerId]["ptype"] = $attribVal; // deprecated
+					$this->players[$playerId]["isComp"] = ($attribVal == 'Comp')?true:false;
 					break;
 				case 0x0BB9: // initial race, Prot Terr Zerg or RAND
 					$this->players[$playerId]["srace"] = $attribVal;
@@ -253,14 +256,8 @@ class SC2Replay {
 					$this->gamePublic = (($attribVal == "Priv")?false:true);
 					break;
 				case 0x0BBA: // color index
-					if ($this->build >= 15449) {
-						$this->players[$playerId]["colorIndex"] = intval(substr($attribVal,2));
-						$this->players[$playerId]["sColor"] = self::$colorIndices[intval(substr($attribVal,2))];
-					}
-					else {
-						$this->players[$playerId]["colorIndex"] = intval($attribVal);
-						$this->players[$playerId]["sColor"] = self::$colorIndices[intval($attribVal)];
-					}
+					$this->players[$playerId]["colorIndex"] = intval(substr($attribVal,2));
+					$this->players[$playerId]["sColor"] = self::$colorIndices[intval(substr($attribVal,2))];
 					break;
 				default:
 			}
@@ -374,7 +371,10 @@ class SC2Replay {
 			$eventType = $nextByte >> 5; // 3 lowest bits
 			$globalEventFlag = $nextByte & 16; // 4th bit
 			$playerId = $nextByte & 15; // bits 5-8
-			$playerName = $this->players[$playerId]['sname'];
+			if (isset($this->players[$playerId]))
+				$playerName = $this->players[$playerId]['sName'];
+			else
+				$playerName = "";
 			$eventCode = $this->readByte($string,$numByte);
 			$time += $timeStamp;
 			// weird timestamp values mean that there's likely a problem with the alignment of the parse(too few/too many bytes read for an eventcode)
@@ -425,12 +425,9 @@ class SC2Replay {
 							if ($reqTarget == 0x50)
 								$data .= $this->readByte($string,$numByte);
 							// update apm array
-							$this->players[$playerId]['apmtotal']++;
-							$this->players[$playerId]['apm'][floor($time / 16)]++;
+							$this->addPlayerAction($playerId, floor($time / 16));
 
-							if (!isset($this->players[$playerId]['firstevents'][$ability]))
-								$this->players[$playerId]['firstevents'][$ability] = ceil($time / 16);
-							$this->players[$playerId]['numevents'][$ability]++;
+							$this->addPlayerAbility($playerId, ceil($time /16), $ability);
 							break;
 						case 0x2F: // player sends resources
 							$numByte += 17; // data is 17 bytes long
@@ -458,7 +455,7 @@ class SC2Replay {
 								
 								$uTypesCount = (($dsuMapLastByte & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nByte & (0xFF >> (8 - $dsuExtraBits))));
 								for ($i = 1;$i <= $uTypesCount;$i++) {
-									$n3Bytes = unpack("C3",$this->readBytes($string,$numByte,3));
+									$nBytes = unpack("C3",$this->readBytes($string,$numByte,3));
 									$tmp = (($nByte & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nBytes[1] & (0xFF >> (8 - $dsuExtraBits))));
 									$tmp2 = (($nBytes[1] & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nBytes[2] & (0xFF >> (8 - $dsuExtraBits))));
 									$tmp3 = (($nBytes[2] & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nBytes[3] & (0xFF >> (8 - $dsuExtraBits))));
@@ -488,8 +485,7 @@ class SC2Replay {
 							
 							//update apm fields
 							if ($eventCode == 0xAC) {
-								$this->players[$playerId]['apmtotal']++;
-								$this->players[$playerId]['apm'][floor($time / 16)]++;
+								$this->addPlayerAction($playerId, floor($time / 16));
 							}
 							break;
 						case 0x0D: // manually uses hotkey
@@ -514,8 +510,7 @@ class SC2Replay {
 							else if ($byte1 & 4)
 								$numByte += 1;
 							// update apm
-							$this->players[$playerId]['apmtotal']++;
-							$this->players[$playerId]['apm'][floor($time / 16)]++;
+							$this->addPlayerAction($playerId, floor($time / 16));
 							break;
 						case 0x1F: // no idea
 							$numByte += 17; // 84 00 00 0c 84 00 00 00 80 00 00 00 80 00 00 00 00
@@ -543,7 +538,7 @@ class SC2Replay {
 						case 0x87:
 							$numByte += 8;
 							break;
-						case 0x01:
+						case 0x01: // camera movement
 						case 0x11:						
 						case 0x21:
 						case 0x31:
@@ -559,10 +554,19 @@ class SC2Replay {
 						case 0xD1:
 						case 0xE1:
 						case 0xF1:
+							// assume AB CD EF GH IJ, where AB is event code (0x01-0xF1)
+							// and CD EF GH IJ are the next four bytes, each letter corresponds to 4 bits
+							// x-coordinate would be ACDF and y-coordinate EGHJ
+							// where A and E are most significant
+							// I is some kind of flag, value higher than 9 indicates at least 2 extra bytes
+							// similarly, in the following 2 extra bytes, VW XY,
+							// X is a flag value, if  > 9 then 2 extra bytes are read
+							// extra bytes occur when camera is zoomed in or out. No more than 4 extra bytes
+							// total have been observed
+							// initial camera event has the I value set as D (13)
 							$numByte += 3;
-							$lastByte = $this->readByte($string,$numByte);
-							if (($lastByte & 0xF0) == 0xC0)
-								$numByte += 2;
+							for ($tmp = $this->readByte($string,$numByte);($tmp & 0xF0) >= 0xA0;$numByte++,$tmp = $this->readByte($string,$numByte));
+
 							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
@@ -592,9 +596,6 @@ class SC2Replay {
 					switch($eventCode) {
 						case 0x89: //automatic synchronization?
 							$numByte += 4;
-							break;
-						case 0x09:
-							$numByte += 3;
 							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
@@ -636,6 +637,28 @@ class SC2Replay {
 			else if ($val['party'] > 0) $this->players[$val['id']]['won'] = 0;
 		}
 	}
+	// updates apm array and total action count for $playerId, $time is in seconds
+	private function addPlayerAction($playerId, $time) {
+		if (!isset($this->players[$playerId]))
+			return;
+		$this->players[$playerId]['apmtotal']++;
+		if (isset($this->players[$playerId]['apm'][$time]))
+			$this->players[$playerId]['apm'][$time]++;
+		else
+			$this->players[$playerId]['apm'][$time] = 1;
+	}
+	// updates numevents and firstevents arrays with the ability code
+	private function addPlayerAbility($playerId, $time, $abilitycode) {
+		if (!isset($this->players[$playerId]))
+			return;
+		$this->players[$playerId]['apmtotal']++;
+		if (isset($this->players[$playerId]['numevents'][$abilitycode]))
+			$this->players[$playerId]['numevents'][$abilitycode]++;
+		else {
+			$this->players[$playerId]['numevents'][$abilitycode] = 1;
+			$this->players[$playerId]['firstevents'][$abilitycode] = $time;
+		}
+	}
 	private function parseTimeStamp($string, &$numByte) {
 		$one = $this->readByte($string,$numByte);
 		if (($one & 3) > 0) { // check if value is two bytes or more
@@ -657,18 +680,27 @@ class SC2Replay {
 	// gets the literal string from the sc2_abilitycodes array based on the ability code
 	// returns false if the variable doesn't exist or the file cannot be included
 	function getAbilityString($num) {
-		global $sc2_abilityCodes;
-		if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {
-			if ($this->debug) return sprintf("%s (%06X)",$sc2_abilityCodes[$num]['desc'],$num);
-			else return $sc2_abilityCodes[$num]['desc'];
+		if (class_exists('SC2ReplayUtils')) {
+			if ($this->debug) $debug = sprintf(" (%06X)",$num);
+			else $debug = "";
+			if (isset(SC2ReplayUtils::$ABILITYCODES[$num]))
+				return SC2ReplayUtils::$ABILITYCODES[$num]['desc'].$debug;
+			else if ($this->debug)
+				$this->debug(sprintf("Unknown ability code: %06X",$num));
 		}
+		else if ($this->debug)
+			$this->debug("Class SC2ReplayUtils not found!");
 		return false;
 	}
 	function getAbilityArray($num) {
-		global $sc2_abilityCodes;
-		if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {
-			return $sc2_abilityCodes[$num];
+		if (class_exists('SC2ReplayUtils')) {
+			if (isset(SC2ReplayUtils::$ABILITYCODES[$num]))
+				return SC2ReplayUtils::$ABILITYCODES[$num];
+			else if ($this->debug)
+				$this->debug(sprintf("Unknown ability code: %06X",$num));
 		}
+		else if ($this->debug)
+			$this->debug("Class SC2ReplayUtils not found!");
 		return false;
 	}
 }

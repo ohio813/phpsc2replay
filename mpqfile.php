@@ -206,7 +206,7 @@ class MPQFile {
 			}
 			$this->debugNewline = $tmpnewline;
 		}
-		$this->init = MPQFILE_PARSE_OK;
+		$this->init = MPQ_PARSE_OK;
 
 		return true;
 	}
@@ -237,7 +237,7 @@ class MPQFile {
 	}
 	
 	function getFileSize($filename) {
-		if ($this->init !== MPQFILE_PARSE_OK) {
+		if ($this->init !== MPQ_PARSE_OK) {
 			if ($this->debug) $this->debug("Tried to use getFileSize without initializing");
 			return false;
 		}
@@ -259,7 +259,7 @@ class MPQFile {
 	}
 	
 	function readFile($filename) {
-		if ($this->init !== MPQFILE_PARSE_OK) {
+		if ($this->init !== MPQ_PARSE_OK) {
 			if ($this->debug) $this->debug("Tried to use getFile without initializing");
 			return false;
 		}
@@ -312,6 +312,7 @@ class MPQFile {
 		}
 		$c  = count($sectors) - 1;
 		$totDur = 0;
+		$output = "";
 		for ($i = 0;$i < $c;$i++) {
 			$sectorLen = $sectors[$i + 1] - $sectors[$i];
 			if ($sectorLen == 0) break;
@@ -342,7 +343,7 @@ class MPQFile {
 	}
 	
 	function parseReplay() {
-		if ($this->init !== MPQFILE_PARSE_OK) {
+		if ($this->init !== MPQ_PARSE_OK) {
 			if ($this->debug) $this->debug("Tried to use parseReplay without initializing");
 			return false;
 		}
@@ -357,7 +358,9 @@ class MPQFile {
 			return false;
 		}
 	}
-	
+	function isParsed() {
+		return $this->init === MPQ_PARSE_OK;
+	}
 	function getState() {
 		return $this->init;
 	}
@@ -380,7 +383,7 @@ class MPQFile {
 		return $retVal;
 	}
 	
-	static function deflate_decompress($string) {
+	function deflate_decompress($string) {
 		if (function_exists("gzinflate")){
 			$tmp = gzinflate(substr($string,2,strlen($string) - 2));
 			return $tmp;
@@ -388,7 +391,7 @@ class MPQFile {
 		if ($this->debug) $this->debug("Function 'gzinflate' does not exist, is gzlib installed as a module?");
 		return false;
 	}
-	static function bzip2_decompress($string) {
+	function bzip2_decompress($string) {
 		if (function_exists("bzdecompress")){
 			$tmp = bzdecompress($string);
 			return $tmp;

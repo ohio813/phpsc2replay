@@ -19,7 +19,7 @@
 <head>
 <style type="text/css">
 table.events {
-	display: inline;
+	float: left;
 }
 table.events td {
 	border: solid #000 1px;
@@ -27,7 +27,9 @@ table.events td {
 table.events th {
 	border: solid #000 1px;
 }
-
+div.events {
+	float: left;
+}
 
 </style>
 <script language="JavaScript">
@@ -35,8 +37,8 @@ table.events th {
 function toggleVisible(id) {
    var a = document.getElementById?document.getElementById(id):document.all[id];
    if (a) {
-	 if (a.style.display == 'inline-block') a.style.display = 'none';
-	 else a.style.display = 'inline-block';
+	 if (a.style.display == 'block') a.style.display = 'none';
+	 else a.style.display = 'block';
    }
    return false;
 }
@@ -77,11 +79,13 @@ function createAPMImage($vals, $length, $fn) {
 		$apm = 0;
 		if ($secs < 60) {
 			for ($tmp = 0;$tmp < $secs;$tmp++)
-				$apm += $vals[$tmp];
+				if (isset($vals[$tmp]))
+					$apm += $vals[$tmp];
 			$apm = $apm / $secs * 60;
 		} else {
 			for ($tmp = $secs - 60;$tmp < $secs;$tmp++)
-				$apm += $vals[$tmp];
+				if (isset($vals[$tmp]))
+					$apm += $vals[$tmp];
 			$apm = $apm;
 		}
 		if ($apm > $maxapm)
@@ -148,6 +152,9 @@ if (isset($_FILES['userfile'])) {
 		$err = true;
 	}
 	if ($err !== true) {
+		if ($_POST['debug'] == 1) {
+			error_reporting(-1);
+		}
 		if (class_exists("MPQFile") || (include 'mpqfile.php')) {
 			$start = microtime_float();
 			if ($_POST['debug'] == 1) {
@@ -200,7 +207,7 @@ if (isset($_FILES['userfile'])) {
 
 				
 				$t = $b->getEvents();
-				if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {
+				if (class_exists('SC2ReplayUtils')) {
 ?>
 <div>
 <span><b>Click on the following links to show/hide events</b></span><br />
@@ -212,7 +219,7 @@ if (isset($_FILES['userfile'])) {
 <div>		
 <?php
 					//create table of all events
-					echo "<div id=\"allevents\" style=\"display: inline-block\"><h2>All events:</h2><table class=\"events\"><tr><th>Timecode</th>\n";
+					echo "<div id=\"allevents\" style=\"display: block\" class=\"events\"><h2>All events:</h2><table class=\"events\"><tr><th>Timecode</th>\n";
 					$pNum = count($players);
 					foreach ($players as $value) {
 					  if ($value['party'] > 0 && $value['ptype'] != 'Comp')
@@ -227,16 +234,16 @@ if (isset($_FILES['userfile'])) {
 						foreach ($players as $value2) {
 							if ($value2['party'] == 0 || $value2['ptype'] == 'Comp') continue;
 							if ($value['p'] == $value2['id'])
-								echo sprintf("<td>%s</td>",$eventarray['desc']);
+								echo sprintf("<td>%s%s</td>",$eventarray['desc'],(isset($_POST['debug']))?sprintf(" (%06X)",$value['a']):"");
 							else
 								echo "<td>&nbsp;</td>";
 						}
 						echo "</tr>\n";
 					}
 					echo "</table></div>";
-					$buildingDiv = "<div id=\"buildingevents\" style=\"display: none\"><h2>Buildings:</h2>";
-					$unitDiv = "<div id=\"unitevents\" style=\"display: none\"><h2>Units:</h2>";
-					$upgradeDiv = "<div id=\"upgradeevents\" style=\"display: none\"><h2>Upgrades:</h2>";
+					$buildingDiv = "<div id=\"buildingevents\" style=\"display: none\" class=\"events\"><h2>Buildings:</h2>";
+					$unitDiv = "<div id=\"unitevents\" style=\"display: none\" class=\"events\"><h2>Units:</h2>";
+					$upgradeDiv = "<div id=\"upgradeevents\" style=\"display: none\" class=\"events\"><h2>Upgrades:</h2>";
 					// create ability breakdown tables
 					foreach ($players as $value) {
 						if ($value['ptype'] == 'Comp') continue;
@@ -284,7 +291,7 @@ if (isset($_FILES['userfile'])) {
 				}
 			}
 			$end =  microtime_float();
-			echo sprintf("Time to parse: %d ms.<br />\n",(($end - $start)*1000));
+			echo sprintf("<p>Time to parse: %d ms.<br />\nPeak memory usage: %d bytes<br /></p>\n",(($end - $start)*1000),memory_get_peak_usage(true));
 		}
 	}
 }
