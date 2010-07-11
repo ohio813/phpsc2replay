@@ -16,9 +16,37 @@
 ?>
 
 <html>
+<head>
+<style type="text/css">
+table.events {
+	display: inline;
+}
+table.events td {
+	border: solid #000 1px;
+}
+table.events th {
+	border: solid #000 1px;
+}
+
+
+</style>
+<script language="JavaScript">
+<!--
+function toggleVisible(id) {
+   var a = document.getElementById?document.getElementById(id):document.all[id];
+   if (a) {
+	 if (a.style.display == 'inline-block') a.style.display = 'none';
+	 else a.style.display = 'inline-block';
+   }
+   return false;
+}
+//-->
+</script>
+</head>
 <body>
 <p><b>NOTE: this test page can only parse replays from SC2 beta phase 2</b><br />
 Expect gazillion error messages if you try an older replay file.</p>
+<p><b>NOTE 2: Computer opponents' events are not recorded in replays (Meaning no apm or build orders of computer opponents)</b></p>
 <form enctype="multipart/form-data" action="upload_file.php" method="POST">
     <input type="hidden" name="MAX_FILE_SIZE" value="<?php echo $MAX_FILE_SIZE;?>" />
     Choose file to upload: <input name="userfile" type="file" /><br />
@@ -130,18 +158,16 @@ if (isset($_FILES['userfile'])) {
 
 			if ($init == MPQ_ERR_NOTMPQFILE)
 				echo "Error parsing uploaded file, make sure it is a valid MPQ archive!<br />\n";
-			else if ($a->getVersion() < 9)
-				echo "Error: This parser only supports SC2 beta demos from major version 9 onwards<br />\n";
 			else {
 				echo sprintf("Major version %d, build %d<br />\n",$a->getVersion(),$a->getBuild());
 				$b = $a->parseReplay();
-				$tmp = $b->getPlayers();
+				$players = $b->getPlayers();
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				
 				$apmString = "<b>APM graphs</b><br />\n";
 				echo "<table border=\"1\"><tr><th>Player name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
-				foreach($tmp as $value) {
+				foreach($players as $value) {
 					$wincolor = ($value['won'] == 1)?0x00FF00:0xFF0000;
 					echo sprintf("<tr><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
 									$value['sName'],
@@ -153,7 +179,7 @@ if (isset($_FILES['userfile'])) {
 									((isset($value['won']))?$wincolor:0xFFFFFF),
 									(isset($value['won']))?$value['won']:(($value['party'] > 0)?"Unknown":"-")
 								);
-					if ($value['party'] > 0) {
+					if ($value['party'] > 0 && $value['ptype'] != 'Comp') {
 						$apmFileName = $value['id']."_".md5($name).".png";
 						createAPMImage($value['apm'],$b->getGameLength(),$apmFileName);
 						$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['sName']);
@@ -169,28 +195,92 @@ if (isset($_FILES['userfile'])) {
 					echo "</table><br />\n";
 				}
 				echo $apmString;
+
+
+
 				
 				$t = $b->getEvents();
 				if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {
-					echo "<table border=\"1\"><tr><th>Timecode</th>\n";
-					$pNum = count($tmp);
-					foreach ($tmp as $value) {
-					  if ($value['party'] > 0)
+?>
+<div>
+<span><b>Click on the following links to show/hide events</b></span><br />
+<span><a href="#" onClick="return toggleVisible('allevents');">All events</a></span>
+<span><a href="#" onClick="return toggleVisible('buildingevents');">Building events</a></span>
+<span><a href="#" onClick="return toggleVisible('unitevents');">Unit events</a></span>
+<span><a href="#" onClick="return toggleVisible('upgradeevents');">Upgrade events</a></span>
+</div>
+<div>		
+<?php
+					//create table of all events
+					echo "<div id=\"allevents\" style=\"display: inline-block\"><h2>All events:</h2><table class=\"events\"><tr><th>Timecode</th>\n";
+					$pNum = count($players);
+					foreach ($players as $value) {
+					  if ($value['party'] > 0 && $value['ptype'] != 'Comp')
 						echo sprintf("<th>%s (%s)</th>",$value['sName'],$value['race']);
 					}
 					echo "</tr>\n";
 					foreach ($t as $value) {
+					    $eventarray = $b->getAbilityArray($value['a']);
+						// setting rally points or issuing move/attack move or other commands does not tell anything
+						if ($eventarray['type'] == SC2_TYPEGEN) continue;
 						echo sprintf("<tr><td>%d sec</td>",$value['t'] / 16);
-						foreach ($tmp as $value2) {
-							if ($value2['party'] == 0) continue;
+						foreach ($players as $value2) {
+							if ($value2['party'] == 0 || $value2['ptype'] == 'Comp') continue;
 							if ($value['p'] == $value2['id'])
-								echo sprintf("<td>%s</td>",$b->getAbilityString($value['a']));
+								echo sprintf("<td>%s</td>",$eventarray['desc']);
 							else
-								echo "<td></td>";
+								echo "<td>&nbsp;</td>";
 						}
 						echo "</tr>\n";
 					}
-					echo "</table>";
+					echo "</table></div>";
+					$buildingDiv = "<div id=\"buildingevents\" style=\"display: none\"><h2>Buildings:</h2>";
+					$unitDiv = "<div id=\"unitevents\" style=\"display: none\"><h2>Units:</h2>";
+					$upgradeDiv = "<div id=\"upgradeevents\" style=\"display: none\"><h2>Upgrades:</h2>";
+					// create ability breakdown tables
+					foreach ($players as $value) {
+						if ($value['ptype'] == 'Comp') continue;
+						$buildingTable = sprintf("<table class=\"events\"><tr><th><font color=\"#%s\">%s</font></th><th>First seen</th><th>Total</th></tr>\n",
+									  $value['color'],
+									  $value['sName']);
+						$unitTable = sprintf("<table class=\"events\"><tr><th><font color=\"#%s\">%s</font></th><th>First seen</th><th>Total</th></tr>\n",
+									  $value['color'],
+									  $value['sName']);
+						$upgradeTable = sprintf("<table class=\"events\"><tr><th><font color=\"#%s\">%s</font></th><th>First seen</th><th>Total</th></tr>\n",
+									  $value['color'],
+									  $value['sName']);
+						foreach ($value['firstevents'] as $eventid => $time) {
+							$eventarray = $b->getAbilityArray($eventid);
+							$str = sprintf("<tr><td>%s</td><td>%s</td><td>%d</td></tr>\n",
+										$eventarray['name'],
+										$b->getFormattedSecs($time),
+										$value['numevents'][$eventid]);
+							switch ($eventarray['type']) {
+								case SC2_TYPEBUILDING:
+								case SC2_TYPEBUILDINGUPGRADE:
+									$buildingTable .= $str;
+									break;
+								case SC2_TYPEUNIT:
+								case SC2_TYPEWORKER:
+									$unitTable .= $str;
+									break;
+								case SC2_TYPEUPGRADE:
+									$upgradeTable .= $str;
+									break;
+								default:
+							}
+						}
+						$buildingTable .= "</table>";
+						$unitTable .= "</table>";
+						$upgradeTable .= "</table>";
+						$buildingDiv .= $buildingTable;
+						$unitDiv .= $unitTable;
+						$upgradeDiv .= $upgradeTable;
+					}
+					echo $buildingDiv . "</div>";
+					echo $unitDiv . "</div>";
+					echo $upgradeDiv . "</div>";
+					echo "</div>";
 				}
 			}
 			$end =  microtime_float();

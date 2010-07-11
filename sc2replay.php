@@ -91,9 +91,12 @@ class SC2Replay {
 	function getMessages() { return $this->messages; }
 	// getFormattedGameLength returns the time in h hrs, m mins, s secs 
 	function getFormattedGameLength() {
-		$hrs = floor($this->gameLength / 3600);
-		$mins = floor($this->gameLength / 60);
-		$secs = $this->gameLength % 60;
+		return $this->getFormattedSecs($this->gameLength);
+	}
+	function getFormattedSecs($secs) {
+		$hrs = floor($secs / 3600);
+		$mins = floor($secs / 60);
+		$secs = $secs % 60;
 		if ($hrs > 0) $o = "$hrs hrs, ";
 		if ($mins > 0) $o .= "$mins mins, ";
 		$o .= "$secs secs";
@@ -363,6 +366,7 @@ class SC2Replay {
 		$len = strlen($string);
 		$playerLeft = array();
 		$events = array();
+
 		$time = 0;
 		while ($numByte < $len) {
 			$timeStamp = $this->parseTimeStamp($string,$numByte);
@@ -423,6 +427,10 @@ class SC2Replay {
 							// update apm array
 							$this->players[$playerId]['apmtotal']++;
 							$this->players[$playerId]['apm'][floor($time / 16)]++;
+
+							if (!isset($this->players[$playerId]['firstevents'][$ability]))
+								$this->players[$playerId]['firstevents'][$ability] = ceil($time / 16);
+							$this->players[$playerId]['numevents'][$ability]++;
 							break;
 						case 0x2F: // player sends resources
 							$numByte += 17; // data is 17 bytes long
@@ -653,6 +661,13 @@ class SC2Replay {
 		if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {
 			if ($this->debug) return sprintf("%s (%06X)",$sc2_abilityCodes[$num]['desc'],$num);
 			else return $sc2_abilityCodes[$num]['desc'];
+		}
+		return false;
+	}
+	function getAbilityArray($num) {
+		global $sc2_abilityCodes;
+		if (isset($sc2_abilityCodes) || (include 'abilitycodes.php')) {
+			return $sc2_abilityCodes[$num];
 		}
 		return false;
 	}
