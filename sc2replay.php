@@ -15,6 +15,7 @@
 */
 class SC2Replay {
 	public static $gameSpeeds = array(0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
+	public static $difficultyLevels = array(0 => "Very easy", 1=> "Easy", 2=> "Normal", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
 	public static $gameSpeedCE = array(0 => 39, 1=> 44, 2=> 60, 3=> 64, 4=> 64); // estimates, weird values
 	public static $colorIndices = array(1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Pink");
 	private $players; //array, indices: color, team, sname, lname, race, startRace, handicap, ptype
@@ -205,6 +206,7 @@ class SC2Replay {
 		$p["numevents"] = array();
 		$p["ptype"] = "";
 		$p["handicap"] = 0;
+		$p["isComp"] = false;
 		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $p["color"]));
 		return $p;
 	}
@@ -238,7 +240,29 @@ class SC2Replay {
 					$this->players[$playerId]["handicap"] = $attribVal;
 					break;
 				case 0x0BBC: // difficulty level (of computer player, Medi for humans)
-					$this->players[$playerId]["difficulty"] = $attribVal;
+					switch ($attribVal) {
+						case "Insa":
+							$tmp = 5;
+							break;
+						case "VyHd":
+							$tmp = 4;
+							break;
+						case "VyHd":
+							$tmp = 3;
+							break;
+						case "Medi":
+							$tmp = 2;
+							break;
+						case "Easy":
+							$tmp = 1;
+							break;
+						case "VyEy":
+							$tmp = 0;
+							break;
+						default:
+							$tmp = 2;
+					}
+					$this->players[$playerId]["difficulty"] = $tmp;
 					break;
 				case 0x0BB8: // game speed
 					switch ($attribVal) {
@@ -247,6 +271,15 @@ class SC2Replay {
 							break;
 						case "Fast":
 							$tmp = 3;
+							break;
+						case "Norm":
+							$tmp = 2;
+							break;
+						case "Slow":
+							$tmp = 1;
+							break;
+						case "Slor":
+							$tmp = 0;
 							break;
 						default:
 							$tmp = 2;
@@ -360,7 +393,7 @@ class SC2Replay {
 				if (($opcode & 8) == 8) $messageLength += 64;
 				if (($opcode & 16) == 16) $messageLength += 128;
 				$message = $this->readBytes($string,$numByte,$messageLength);
-				$messages[] = array('id' => $playerId, 'name' => $this->players[$playerId]['sName'], 'target' => $messageTarget,
+				$messages[] = array('id' => $playerId, 'name' => $this->players[$playerId]['name'], 'target' => $messageTarget,
 									'time' => floor($totTime / 16), 'message' => $message);
 			}
 			else if ($opcode == 0x83) { // ping on map? 8 bytes?

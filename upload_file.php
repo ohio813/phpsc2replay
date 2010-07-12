@@ -181,8 +181,12 @@ if (isset($_FILES['userfile'])) {
 						$wincolor = (isset($value['won']) && $value['won'] == 1)?0x00FF00:0xFF0000;
 					else
 						$wincolor = 0xFFFFFF;
+					if ($value['isComp'])
+						$difficultyString = sprintf(" (%s)",SC2Replay::$difficultyLevels[$value['difficulty']]);
+					else
+						$difficultyString = "";
 					echo sprintf("<tr><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
-									$value['sName'],
+									$value['name'].$difficultyString,
 									$value['race'],
 									$value['color'],
 									$value['sColor'],
@@ -228,23 +232,24 @@ if (isset($_FILES['userfile'])) {
 					$pNum = count($players);
 					foreach ($players as $value) {
 					  if ($value['party'] > 0 && $value['ptype'] != 'Comp')
-						echo sprintf("<th>%s (%s)</th>",$value['sName'],$value['race']);
+						echo sprintf("<th>%s (%s)</th>",$value['name'],$value['race']);
 					}
 					echo "</tr>\n";
-					foreach ($t as $value) {
-					    $eventarray = $b->getAbilityArray($value['a']);
-						// setting rally points or issuing move/attack move or other commands does not tell anything
-						if ($eventarray['type'] == SC2_TYPEGEN && !isset($_POST['debug'])) continue;
-						echo sprintf("<tr><td>%d sec</td>",$value['t'] / 16);
-						foreach ($players as $value2) {
-							if ($value2['party'] == 0 || $value2['ptype'] == 'Comp') continue;
-							if ($value['p'] == $value2['id'])
-								echo sprintf("<td>%s%s</td>",$eventarray['desc'],(isset($_POST['debug']))?sprintf(" (%06X)",$value['a']):"");
-							else
-								echo "<td>&nbsp;</td>";
+					if (count($t) > 0)
+						foreach ($t as $value) {
+							$eventarray = $b->getAbilityArray($value['a']);
+							// setting rally points or issuing move/attack move or other commands does not tell anything
+							if ($eventarray['type'] == SC2_TYPEGEN && !isset($_POST['debug'])) continue;
+							echo sprintf("<tr><td>%d sec</td>",$value['t'] / 16);
+							foreach ($players as $value2) {
+								if ($value2['party'] == 0 || $value2['ptype'] == 'Comp') continue;
+								if ($value['p'] == $value2['id'])
+									echo sprintf("<td>%s%s</td>",$eventarray['desc'],(isset($_POST['debug']))?sprintf(" (%06X)",$value['a']):"");
+								else
+									echo "<td>&nbsp;</td>";
+							}
+							echo "</tr>\n";
 						}
-						echo "</tr>\n";
-					}
 					echo "</table></div>";
 					$buildingDiv = "<div id=\"buildingevents\" style=\"display: none\" class=\"events\"><h2>Buildings:</h2>";
 					$unitDiv = "<div id=\"unitevents\" style=\"display: none\" class=\"events\"><h2>Units:</h2>";
