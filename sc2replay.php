@@ -29,7 +29,7 @@ class SC2Replay {
 	private $debug; // debug, currently true or false
 	private $debugNewline; // contents are appended to the end of all debug messages
 	private $messages; // contains an array of the chat log messages
-	
+	private $winnerKnown;
 	
 	function __construct() {
 		$this->players = array();
@@ -39,6 +39,7 @@ class SC2Replay {
 		$this->teamSize = NULL;
 		$this->debug = false;
 		$this->debugNewline = "<br />\n";
+		$this->winnerKnown = false;
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
@@ -47,34 +48,44 @@ class SC2Replay {
 		if (!class_exists('SC2ReplayUtils') && (file_exists('sc2replayutils.php'))) {
 			include 'sc2replayutils.php';
 		}
+
 		$this->gameLength = $mpqfile->getGameLength();
 		$this->version = $mpqfile->getVersion();
 		$this->build = $mpqfile->getBuild();
 		// first parse replay.details file
 		$file = $mpqfile->readFile("replay.details");
+		$start = microtime_float();
 		if ($file !== false) {
 			$this->parseDetailsFile($file);
 		}
 		else if ($this->debug) $this->debug("Error reading the replay.details file");
-	
+		if ($this->debug) $this->debug(sprintf("Parsed replay.details file in %d ms.",(microtime_float() - $start)*1000));
+
 		$file = $mpqfile->readFile("replay.attributes.events");
+		$start = microtime_float();		
 		if ($file !== false) {
 			$this->parseAttributesFile($file);
 		}
 		else if ($this->debug) $this->debug("Error reading the replay.attributes.events file");
+		if ($this->debug) $this->debug(sprintf("Parsed replay.attributes.events file in %d ms.",(microtime_float() - $start)*1000));
 		
+		$num = 0;
 		$file = $mpqfile->readFile("replay.game.events");
-		if ($file !== false) $this->parseGameEventsFile($file);
+		$start = microtime_float();	
+		if ($file !== false) $num = $this->parseGameEventsFile($file);
 		else if ($this->debug) $this->debug("Error reading the replay.game.events file");
+		if ($this->debug) $this->debug(sprintf("Parsed replay.game.events file in %d ms, found $num events.",(microtime_float() - $start)*1000));
 		
 		$file = $mpqfile->readFile("replay.message.events");
+		$start = microtime_float();	
 		if ($file !== false) $this->parseChatLog($file);
 		else if ($this->debug) $this->debug("Error reading the replay.message.events file");
-		
+		if ($this->debug) $this->debug(sprintf("Parsed replay.message.events file in %d ms.",(microtime_float() - $start)*1000));		
 	}
 	private function debug($message) { echo $message.($this->debugNewline); }
 	function setDebugNewline($str) { $this->debugNewline = $str; }
 	function setDebug($num) { $this->debug = $num; }
+	function isWinnerKnown() { return $this->winnerKnown; }
 	function getPlayers() { return $this->players; }
 	function getMapName() { return $this->mapName; }
 	function getGameSpeed() { return $this->gameSpeed; }
@@ -90,7 +101,7 @@ class SC2Replay {
 	function getFormattedSecs($secs) {
 		$o = "";
 		$hrs = floor($secs / 3600);
-		$mins = floor($secs / 60);
+		$mins = floor($secs / 60) % 60;
 		$secs = $secs % 60;
 		if ($hrs > 0) $o = "$hrs hrs, ";
 		if ($mins > 0) $o .= "$mins mins, ";
@@ -342,16 +353,18 @@ class SC2Replay {
 			$totTime += $timestamp;
 			if ($opcode == 0x80) // header weird thingy?
 				$numByte += 4;
-			else if ($opcode == 0x00 || $opcode == 0x02 || $opcode == 0x0a) { // message
+//			else if ($opcode == 0x00 || $opcode == 0x02 || $opcode == 0x0a) { // message
+			else if (($opcode & 0x80) == 0) { // message
 				$messageTarget = $opcode & 3;
 				$messageLength = $this->readByte($string,$numByte);
-				if ($opcode == 0x0a) $messageLength += 64;
+				if (($opcode & 8) == 8) $messageLength += 64;
+				if (($opcode & 16) == 16) $messageLength += 128;
 				$message = $this->readBytes($string,$numByte,$messageLength);
 				$messages[] = array('id' => $playerId, 'name' => $this->players[$playerId]['sName'], 'target' => $messageTarget,
 									'time' => floor($totTime / 16), 'message' => $message);
 			}
-			else if ($opcode == 0x83) { // ping on map? 9 bytes?
-				$numByte += 9;
+			else if ($opcode == 0x83) { // ping on map? 8 bytes?
+				$numByte += 8;
 			}
 
 		}
@@ -365,6 +378,7 @@ class SC2Replay {
 		$events = array();
 
 		$time = 0;
+		$numEvents = 0;
 		while ($numByte < $len) {
 			$timeStamp = $this->parseTimeStamp($string,$numByte);
 			$nextByte = $this->readByte($string,$numByte);
@@ -377,14 +391,15 @@ class SC2Replay {
 				$playerName = "";
 			$eventCode = $this->readByte($string,$numByte);
 			$time += $timeStamp;
+			$numEvents++;
 			// weird timestamp values mean that there's likely a problem with the alignment of the parse(too few/too many bytes read for an eventcode)
 			if ($this->debug >= 2) {
 //				if ($len - $numByte > 24) {
 //				$bytes = unpack("C24",substr($string,$numByte,24));
 //				$dataBytes = "";
 //				for ($i = 1;$i <= 24;$i++) $dataBytes .= sprintf("%02X",$bytes[$i]);
-				$this->debug(sprintf("DEBUG L2: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
-					$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
+				$this->debug(sprintf("DEBUG L2: Timestamp: %d, Frames: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
+					floor($time / 16),$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 //				}
 			}
 			switch ($eventType) {
@@ -505,6 +520,8 @@ class SC2Replay {
 							}
 							$extraBytes = floor($byte1 / 8);
 							$numByte += $extraBytes;
+							if ($byte1 & 4 && ($this->debug))
+								$this->debug("Found candidate hotkey event!");
 							if (($byte1 & 4) && (($byte2 & 6) == 6))
 								$numByte += 2;
 							else if ($byte1 & 4)
@@ -512,8 +529,28 @@ class SC2Replay {
 							// update apm
 							$this->addPlayerAction($playerId, floor($time / 16));
 							break;
-						case 0x1F: // no idea
-							$numByte += 17; // 84 00 00 0c 84 00 00 00 80 00 00 00 80 00 00 00 00
+						case 0x1F: // send resources
+						case 0x2F: 
+						case 0x3F: 
+						case 0x4F:
+						case 0x5F:
+						case 0x6F:
+						case 0x7F:
+						case 0x8F:
+							$numByte++; // 0x84
+							$sender = $playerId;
+							$receiver = ($eventCode & 0xF0) >> 4;
+							// sent minerals
+							$bytes = $this->readBytes($string,$numByte,4);
+							$mBytes = unpack("C4",$bytes);
+							$mineralValue = ((($mBytes[1] << 20) | ($mBytes[2] << 12) | ($mBytes[3] << 4)) >> 1) + ($mBytes[4] & 0x0F);
+							// sent gas
+							$bytes = $this->readBytes($string,$numByte,4);
+							$mBytes = unpack("C4",$bytes);
+							$gasValue = ((($mBytes[1] << 20) | ($mBytes[2] << 12) | ($mBytes[3] << 4)) >> 1) + ($mBytes[4] & 0x0F);
+							
+							// last 8 bytes are unknown
+							$numByte += 8;
 							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
@@ -623,10 +660,11 @@ class SC2Replay {
 		if ($numLeft == ($numActual - 1)) {
 			if ($this->debug) $this->debug("Found winner");
 			$this->players[$lastLeaver]['won'] = 0;
+			$this->winnerKnown = true;
 		}
 		else {
 			if ($this->debug) $this->debug("Unable to parse winner");
-			return;
+			return $numEvents;
 		}
 
 		foreach ($this->players as $val) {
@@ -636,6 +674,7 @@ class SC2Replay {
 			if ($val['party'] == $winteam) $this->players[$val['id']]['won'] = 1;
 			else if ($val['party'] > 0) $this->players[$val['id']]['won'] = 0;
 		}
+		return $numEvents;
 	}
 	// updates apm array and total action count for $playerId, $time is in seconds
 	private function addPlayerAction($playerId, $time) {

@@ -157,6 +157,7 @@ if (isset($_FILES['userfile'])) {
 		}
 		if (class_exists("MPQFile") || (include 'mpqfile.php')) {
 			$start = microtime_float();
+			$parseDurationString = "";
 			if ($_POST['debug'] == 1) {
 				echo sprintf("<b>Debugging is on.</b><br />\n");
 			}
@@ -168,6 +169,7 @@ if (isset($_FILES['userfile'])) {
 			else {
 				echo sprintf("Major version %d, build %d<br />\n",$a->getVersion(),$a->getBuild());
 				$b = $a->parseReplay();
+				$parseDurationString .= sprintf("Parsed replay in %d ms.<br />\n",((microtime_float() - $start)*1000));
 				$players = $b->getPlayers();
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
@@ -175,7 +177,10 @@ if (isset($_FILES['userfile'])) {
 				$apmString = "<b>APM graphs</b><br />\n";
 				echo "<table border=\"1\"><tr><th>Player name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
 				foreach($players as $value) {
-					$wincolor = ($value['won'] == 1)?0x00FF00:0xFF0000;
+					if ($b->isWinnerKnown())
+						$wincolor = (isset($value['won']) && $value['won'] == 1)?0x00FF00:0xFF0000;
+					else
+						$wincolor = 0xFFFFFF;
 					echo sprintf("<tr><td>%s</td><td>%s</td><td><font color=\"#%s\">%s</font></td><td>%s</td><td style=\"text-align: center\">%d</td><td style=\"background-color: #%06X; text-align: center\">%d</td></tr>\n",
 									$value['sName'],
 									$value['race'],
@@ -229,7 +234,7 @@ if (isset($_FILES['userfile'])) {
 					foreach ($t as $value) {
 					    $eventarray = $b->getAbilityArray($value['a']);
 						// setting rally points or issuing move/attack move or other commands does not tell anything
-						if ($eventarray['type'] == SC2_TYPEGEN) continue;
+						if ($eventarray['type'] == SC2_TYPEGEN && !isset($_POST['debug'])) continue;
 						echo sprintf("<tr><td>%d sec</td>",$value['t'] / 16);
 						foreach ($players as $value2) {
 							if ($value2['party'] == 0 || $value2['ptype'] == 'Comp') continue;
@@ -290,8 +295,9 @@ if (isset($_FILES['userfile'])) {
 					echo "</div>";
 				}
 			}
-			$end =  microtime_float();
-			echo sprintf("<p>Time to parse: %d ms.<br />\nPeak memory usage: %d bytes<br /></p>\n",(($end - $start)*1000),memory_get_peak_usage(true));
+			echo sprintf("<p>Peak memory usage: %d bytes<br /></p>\n",memory_get_peak_usage(true));
+			$parseDurationString .= sprintf("Page generated in %d ms.<br />\n",((microtime_float() - $start)*1000));
+			echo "<p>$parseDurationString</p>";
 		}
 	}
 }
