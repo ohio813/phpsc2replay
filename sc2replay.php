@@ -31,6 +31,7 @@ class SC2Replay {
 	private $debugNewline; // contents are appended to the end of all debug messages
 	private $messages; // contains an array of the chat log messages
 	private $winnerKnown;
+	private $unitsDict;
 	
 	function __construct() {
 		$this->players = array();
@@ -41,6 +42,7 @@ class SC2Replay {
 		$this->debug = false;
 		$this->debugNewline = "<br />\n";
 		$this->winnerKnown = false;
+		$this->unitsDict = array();
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
@@ -109,6 +111,7 @@ class SC2Replay {
 		$o .= "$secs secs";
 		return $o;
 	}
+	function getUnits() { return $this->unitsDict; }
 	function getEvents() { return $this->events; }
 	function getGameLength() { return $this->gameLength; }
 	// parse replay.details file and add parsed stuff to the object
@@ -400,7 +403,6 @@ class SC2Replay {
 		$numByte += 4;
 		return $tmp[1];
 	}
-	
 	private function readUnitTypeID($string,&$numByte) {
 		return (($this->readByte($string,$numByte) << 16) | ($this->readByte($string,$numByte) << 8) | ($this->readByte($string,$numByte)));
 	}
@@ -538,32 +540,65 @@ class SC2Replay {
 							$selFlags = $this->readByte($string,$numByte);
 							$dsuCount = $this->readByte($string,$numByte);
 							$dsuExtraBits = $dsuCount % 8;
+							$uType = array();
 							if ($dsuCount > 0)
 								$dsuMap = $this->readBytes($string,$numByte,floor($dsuCount / 8));
 							if ($dsuExtraBits != 0) { // not byte-aligned
 								$dsuMapLastByte = $this->readByte($string,$numByte);
 
 								$nByte = $this->readByte($string,$numByte);
-								
-								$uTypesCount = (($dsuMapLastByte & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nByte & (0xFF >> (8 - $dsuExtraBits))));
+
+								//Recalculating these is excessive.
+								$offsetTailMask = 0xFF >> (8-$dsuExtraBits);
+								$offsetHeadMask = ~$offsetTailMask;
+
+								$uTypesCount = ($dsuMapLastByte & $offsetHeadMask) |
+											   ($nByte          & $offsetTailMask);
 								for ($i = 1;$i <= $uTypesCount;$i++) {
 									$nBytes = unpack("C3",$this->readBytes($string,$numByte,3));
-									$tmp = (($nByte & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nBytes[1] & (0xFF >> (8 - $dsuExtraBits))));
-									$tmp2 = (($nBytes[1] & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nBytes[2] & (0xFF >> (8 - $dsuExtraBits))));
-									$tmp3 = (($nBytes[2] & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nBytes[3] & (0xFF >> (8 - $dsuExtraBits))));
-									$tmp = ($tmp << 16) | ($tmp2 << 8) | $tmp3;
-									$uType[$i]['id'] = $tmp;
-									$nByte = $this->readByte($string,$numByte);
-									$tmp = (($nBytes[2] & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($nByte & (0xFF >> (8 - $dsuExtraBits))));
+									$byte1 = ($nByte & $offsetHeadMask) |
+											 ($nBytes[1] & $offsetTailMask);
+									$byte2 = ($nBytes[1] & $offsetHeadMask) |
+											 ($nBytes[2] & $offsetTailMask);
+									$byte3 = ($nBytes[2] & $offsetHeadMask) |
+											 ($nBytes[3] & $offsetTailMask);
+									//Byte3 is almost invariably 0x01
+									$uType[$i]['id'] =  ($byte1 << 16) | 
+														($byte2 << 8)  | 
+														 $byte3;
 
-									$uType[$i]['count'] = $tmp;
+									$nByte = $this->readByte($string,$numByte);
+									$uType[$i]['count'] = ($nBytes[3] & $offsetHeadMask) |
+														  ($nByte     & $offsetTailMask);
+
 								}
 								$lByte = $this->readByte($string,$numByte);
-								$tmp = (($nByte & (0xFF - ((1 << $dsuExtraBits) - 1))) | ($lByte & (0xFF >> (8 - $dsuExtraBits))));
+                
+								$totalUnits = ($nByte & $offsetHeadMask) |
+											  ($lByte & $offsetTailMask);
 
-								$totalUnits = $tmp;
-								//unnecessary to parse unit ID values at this point, so skip them
-								$numByte += $totalUnits * 4;
+								//Populate the unitsDict
+								foreach($uType as $unitType){
+									for($i = 1; $i <= $unitType['count']; $i++){
+										$nBytes = unpack("C4", $this->readBytes($string, $numByte,4));
+										$byte1 = ($lByte     & $offsetHeadMask) |
+												 ($nBytes[1] & $offsetTailMask);
+										$byte2 = ($nBytes[1] & $offsetHeadMask) |
+												 ($nBytes[2] & $offsetTailMask);
+										$uid =   ($byte1 << 8) | $byte2;
+
+										if(!isset($this->unitsDict[$playerId][$unitType['id']][$uid])){
+										//Never seen this unit before:
+											$this->unitsDict[$playerId][$unitType['id']][$uid] = floor($time / 16);
+										//Value = First time seen
+										}
+
+										//Bytes 3 and 4 contain flag info...
+										$lByte = $nBytes[4]; //For looping.
+									}
+								}
+
+
 							} else { // byte-aligned
 								$uTypesCount = $this->readByte($string,$numByte);
 								for ($i = 1;$i <= $uTypesCount;$i++) {
@@ -571,8 +606,19 @@ class SC2Replay {
 									$uType[$i]['count'] = $this->readByte($string,$numByte);
 								}
 								$totalUnits = $this->readByte($string,$numByte);
-								//unnecessary to parse unit ID values at this point, so skip them
-								$numByte += $totalUnits * 4;
+
+								//Populate the Units Dict
+								foreach($uType as $unitType){
+									for($i = 1; $i <= $unitType['count']; $i++){
+										$nBytes = unpack("C4", $this->readBytes($string, $numByte, 4));
+										$uid = ($nBytes[1] << 8) | $nBytes[2];
+										if(!isset($this->unitsDict[$playerId][$unitType['id']][$uid])){
+											//Never seen this unit before:
+											$this->unitsDict[$playerId][$unitType['id']][$uid] = floor($time / 16);
+											//Value = First Time seen
+										}
+									}
+								}
 							}
 							
 							//update apm fields
@@ -816,6 +862,17 @@ class SC2Replay {
 				$this->debug(sprintf("Unknown ability code: %06X",$num));
 		}
 		else if ($this->debug)
+			$this->debug("Class SC2ReplayUtils not found!");
+		return false;
+	}
+	function getUnitArray($num) {
+		if(class_exists('SC2ReplayUtils')) {
+			if (isset(SC2ReplayUtils::$UNITCODES[$num]))
+				return SC2ReplayUtils::$UNITCODES[$num];
+			else if ($this->debug)
+				$this->debug(sprintf("Unknown unit code: %04X", $num));
+		}
+		else if($this->debug)
 			$this->debug("Class SC2ReplayUtils not found!");
 		return false;
 	}
