@@ -190,12 +190,12 @@ if (isset($_FILES['userfile'])) {
 									$value['race'],
 									$value['color'],
 									$value['sColor'],
-									($value['party'] > 0)?"Team ".$value['party']:"-",
-									($value['party'] > 0)?(round($value['apmtotal'] / ($b->getGameLength() / 60))):0,
+									($value['team'] > 0)?"Team ".$value['team']:"-",
+									($value['team'] > 0)?(round($value['apmtotal'] / ($b->getGameLength() / 60))):0,
 									((isset($value['won']))?$wincolor:0xFFFFFF),
-									(isset($value['won']))?$value['won']:(($value['party'] > 0)?"Unknown":"-")
+									(isset($value['won']))?$value['won']:(($value['team'] > 0)?"Unknown":"-")
 								);
-					if ($value['party'] > 0 && $value['ptype'] != 'Comp') {
+					if ($value['team'] > 0 && $value['ptype'] != 'Comp') {
 						$apmFileName = $value['id']."_".md5($name).".png";
 						createAPMImage($value['apm'],$b->getGameLength(),$apmFileName);
 						$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['sName']);
@@ -231,7 +231,7 @@ if (isset($_FILES['userfile'])) {
 					echo "<div id=\"allevents\" style=\"display: block\" class=\"events\"><h2>All events:</h2><table class=\"events\"><tr><th>Timecode</th>\n";
 					$pNum = count($players);
 					foreach ($players as $value) {
-					  if ($value['party'] > 0 && $value['ptype'] != 'Comp')
+					  if ($value['team'] > 0 && $value['ptype'] != 'Comp')
 						echo sprintf("<th>%s (%s)</th>",$value['name'],$value['race']);
 					}
 					echo "</tr>\n";
@@ -242,7 +242,7 @@ if (isset($_FILES['userfile'])) {
 							if ($eventarray['type'] == SC2_TYPEGEN && !isset($_POST['debug'])) continue;
 							echo sprintf("<tr><td>%d sec</td>",$value['t'] / 16);
 							foreach ($players as $value2) {
-								if ($value2['party'] == 0 || $value2['ptype'] == 'Comp') continue;
+								if ($value2['team'] == 0 || $value2['ptype'] == 'Comp') continue;
 								if ($value['p'] == $value2['id'])
 									echo sprintf("<td>%s%s</td>",$eventarray['desc'],(isset($_POST['debug']))?sprintf(" (%06X)",$value['a']):"");
 								else
@@ -259,13 +259,13 @@ if (isset($_FILES['userfile'])) {
 						if ($value['ptype'] == 'Comp') continue;
 						$buildingTable = sprintf("<table class=\"events\"><tr><th><font color=\"#%s\">%s</font></th><th>First seen</th><th>Total</th></tr>\n",
 									  $value['color'],
-									  $value['sName']);
+									  $value['name']);
 						$unitTable = sprintf("<table class=\"events\"><tr><th><font color=\"#%s\">%s</font></th><th>First seen</th><th>Total</th></tr>\n",
 									  $value['color'],
-									  $value['sName']);
+									  $value['name']);
 						$upgradeTable = sprintf("<table class=\"events\"><tr><th><font color=\"#%s\">%s</font></th><th>First seen</th><th>Total</th></tr>\n",
 									  $value['color'],
-									  $value['sName']);
+									  $value['name']);
 						foreach ($value['firstevents'] as $eventid => $time) {
 							$eventarray = $b->getAbilityArray($eventid);
 							$str = sprintf("<tr><td>%s</td><td>%s</td><td>%d</td></tr>\n",

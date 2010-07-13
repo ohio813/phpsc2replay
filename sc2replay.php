@@ -15,7 +15,7 @@
 */
 class SC2Replay {
 	public static $gameSpeeds = array(0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
-	public static $difficultyLevels = array(0 => "Very easy", 1=> "Easy", 2=> "Normal", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
+	public static $difficultyLevels = array(0 => "Very easy", 1=> "Easy", 2=> "Medium", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
 	public static $gameSpeedCE = array(0 => 39, 1=> 44, 2=> 60, 3=> 64, 4=> 64); // estimates, weird values
 	public static $colorIndices = array(1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Pink");
 	private $players; //array, indices: color, team, sname, lname, race, startRace, handicap, ptype
@@ -198,7 +198,7 @@ class SC2Replay {
 		$p["name"] = $sName; // player name
 		$p["race"] = $race; // player race
 		$p["party"] = $party;
-		$p["team"] = $party;
+		$p["team"] = 0;
 		$p["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
 		$p["apmtotal"] = 0;
 		$p["apm"] = array();
@@ -216,6 +216,7 @@ class SC2Replay {
 		if ($this->debug) $this->debug("Parsing replay.attributes.events file");
 		$numByte = 4; // skip the 4-byte header
 		$numAttribs = $this->readUInt32($string,$numByte);
+		$attribArray = array();
 		for ($i = 0;$i < $numAttribs;$i++) {
 			$attribHeader = $this->readUInt16($string,$numByte);
 			$numByte += 2; //skip the 00 00 bytes
@@ -229,11 +230,29 @@ class SC2Replay {
 				if ($b != 0) $attribVal .= chr($b);
 			}
 			$numByte += 4;
+			$attribArray[$playerId][$attributeId] = $attribVal;
 			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d (%s), attribVal = \"%s\"",
 							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["sName"]),$attribVal));
 			switch ($attributeId) {
-/*				case 0x07D3: // team, VERY uncertain because of gazillion other 0x07DX values
-					$this->players[$playerId]["team"] = intval(substr($attribVal,1));
+				// FFA
+/*				case 0x07D6:
+					break;
+				// 4v4
+				case 0x07D5:
+					break;
+				// 3v3
+				case 0x07D4: 
+					break;
+				// 2v2
+				case 0x07D3: // my hypothesis is that every 0x07D<X> value is what the teams would
+							 // be if the game type/team size was changed.
+							 // for example if you changed the dropdownbox from 3v3 to FFA, the values
+							 // under 0x07D6 would be the initial values that you could edit.
+							 // why this is included in replay files is weird to say the least
+				
+					break;
+				// 1v1
+				case 0x07D2:
 					break;
 */
 				case 0x0BBB: // handicap
@@ -305,6 +324,31 @@ class SC2Replay {
 					break;
 				default:
 			}
+		}
+		switch ($attribArray[0x10][0x07D1]) {
+			case "1v1":
+				$attrib = 0x07D2;
+				break;
+			case "2v2":
+				$attrib = 0x07D3;
+				break;			
+			case "3v3":
+				$attrib = 0x07D4;
+				break;
+			case "4v4":
+				$attrib = 0x07D5;
+				break;
+			case "FFA":
+				$attrib = 0x07D6;
+				break;
+			default:
+				if ($this->debug) 
+					$this->debug(sprintf("Unknown game mode in replay.attributes.events: %s",$attribArray[0x10][0x07D1]));
+				return;
+		}
+		foreach ($attribArray as $playerId => $values) {
+			if ($playerId == 0x10) continue;
+			$this->players[$playerId]["team"] = intval(substr($values[$attrib],1));
 		}
 	}
 	
