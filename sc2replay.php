@@ -497,7 +497,7 @@ class SC2Replay {
 				case 0x01: // action
 					switch ($eventCode) {
 						case 0x09: // player quits the game
-							if ($this->players[$playerId]['party'] > 0) // don't log observers/party members etc
+							if ($this->players[$playerId]['team'] > 0) // don't log observers/party members etc
 								$playerLeft[] = $playerId;
 							break;
 						case 0x0B: // player uses an ability
@@ -506,7 +506,7 @@ class SC2Replay {
 							$reqTarget = unpack("C",substr($data,7,1));
 							$reqTarget = $reqTarget[1];
 							$ability = $this->readUnitAbility($data);
-							if ($ability != 0xFFFF0F) {
+							if ($ability != 0xFFFF0F) { // don't log right-clicks
 								$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
 								$this->events = $events;
 							}
@@ -522,9 +522,6 @@ class SC2Replay {
 							$this->addPlayerAction($playerId, floor($time / 16));
 
 							$this->addPlayerAbility($playerId, ceil($time /16), $ability);
-							break;
-						case 0x2F: // player sends resources
-							$numByte += 17; // data is 17 bytes long
 							break;
 						case 0x0C: // automatic update of hotkey?
 						case 0x1C:
