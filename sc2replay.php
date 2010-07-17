@@ -31,7 +31,7 @@ class SC2Replay {
 	private $debugNewline; // contents are appended to the end of all debug messages
 	private $messages; // contains an array of the chat log messages
 	private $winnerKnown;
-	private $unitsDict;
+  private $unitsDict;
 	
 	function __construct() {
 		$this->players = array();
@@ -42,7 +42,7 @@ class SC2Replay {
 		$this->debug = false;
 		$this->debugNewline = "<br />\n";
 		$this->winnerKnown = false;
-    		$this->unitsDict = array();
+    $this->unitsDict = array();
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
@@ -111,7 +111,7 @@ class SC2Replay {
 		$o .= "$secs secs";
 		return $o;
 	}
-	function getUnits() { return $this->unitsDict; }
+  function getUnits() { return $this->unitsDict; }
 	function getEvents() { return $this->events; }
 	function getGameLength() { return $this->gameLength; }
 	// parse replay.details file and add parsed stuff to the object
@@ -497,7 +497,7 @@ class SC2Replay {
 				case 0x01: // action
 					switch ($eventCode) {
 						case 0x09: // player quits the game
-							if ($this->players[$playerId]['team'] > 0) // don't log observers/party members etc
+							if ($this->players[$playerId]['party'] > 0) // don't log observers/party members etc
 								$playerLeft[] = $playerId;
 							break;
 						case 0x0B: // player uses an ability
@@ -506,7 +506,7 @@ class SC2Replay {
 							$reqTarget = unpack("C",substr($data,7,1));
 							$reqTarget = $reqTarget[1];
 							$ability = $this->readUnitAbility($data);
-							if ($ability != 0xFFFF0F) { // don't log right-clicks
+							if ($ability != 0xFFFF0F) {
 								$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
 								$this->events = $events;
 							}
@@ -523,6 +523,9 @@ class SC2Replay {
 
 							$this->addPlayerAbility($playerId, ceil($time /16), $ability);
 							break;
+						case 0x2F: // player sends resources
+							$numByte += 17; // data is 17 bytes long
+							break;
 						case 0x0C: // automatic update of hotkey?
 						case 0x1C:
 						case 0x2C:
@@ -536,87 +539,123 @@ class SC2Replay {
 						case 0xAC: // player changes selection
 							$selFlags = $this->readByte($string,$numByte);
 							$dsuCount = $this->readByte($string,$numByte);
+              if($this->debug){
+                $this->debug("Selection Change");
+                $this->debug(sprintf("Player %s", $playerId));
+                $this->debug(sprintf("Time %d", $time));
+                $this->debug(sprintf("Deselected Count: %d", $dsuCount));
+              }
 							$dsuExtraBits = $dsuCount % 8;
-              						$uType = array();
+              $uType = array();
 							if ($dsuCount > 0)
 								$dsuMap = $this->readBytes($string,$numByte,floor($dsuCount / 8));
 							if ($dsuExtraBits != 0) { // not byte-aligned
 								$dsuMapLastByte = $this->readByte($string,$numByte);
 
-                						$nByte = $this->readByte($string,$numByte);
+                $nByte = $this->readByte($string,$numByte);
 
-                						//Recalculating these is excessive.             //ex: For extra = 2
-                						$offsetTailMask = (0xFF >> (8-$dsuExtraBits));  //ex: 00000011 
-                						$offsetHeadMask = (~$offsetTailMask) & 0xFF;    //ex: 11111100
-                						$offsetWTailMask = 0xFF >> $dsuExtraBits;       //ex: 00111111
-                						$offsetWHeadMask = (~$offsetWTailMask) & 0xFF;  //ex: 11000000
+                //Recalculating these is excessive.             //ex: For extra = 2
+                $offsetTailMask = (0xFF >> (8-$dsuExtraBits));  //ex: 00000011 
+                $offsetHeadMask = (~$offsetTailMask) & 0xFF;    //ex: 11111100
+                $offsetWTailMask = 0xFF >> $dsuExtraBits;       //ex: 00111111
+                $offsetWHeadMask = (~$offsetWTailMask) & 0xFF;  //ex: 11000000
 
-                						$uTypesCount =  ($dsuMapLastByte & $offsetHeadMask) |
-                               							($nByte          & $offsetTailMask);
+                $uTypesCount = ($dsuMapLastByte & $offsetHeadMask) |
+                               ($nByte          & $offsetTailMask);
+
+                if($this->debug){
+                  $this->debug(sprintf("Number of New Unit Types %d", $uTypesCount));
+                }
 
 								for ($i = 1;$i <= $uTypesCount;$i++) {
-									$nBytes = unpack("C3",$this->readBytes($string,$numByte,3));
-                  							$byte1 = ( $nByte     & $offsetHeadMask) |
-                           							 (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-                  							$byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
-                           							 (($nBytes[2] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-                  							$byte3 = (($nBytes[2] & $offsetWTailMask) << $dsuExtraBits) |
-                           							 ( $nBytes[3] & $offsetTailMask);
+                  $nBytes = unpack("C3",$this->readBytes($string,$numByte,3));
+                  $byte1 = ( $nByte     & $offsetHeadMask) |
+                           (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+                  $byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
+                           ( $nBytes[2] & $offsetTailMask);
+                  $byte3 = (($nBytes[2] & $offsetHeadMask) << $dsuExtraBits) |
+                           ( $nBytes[3] & $offsetTailMask);
 
-                  							
-                  							$uType[$i]['id'] = ($byte1 << 16) | 
-                                     							   ($byte2 << 8)  | 
-                                      							   $byte3;
+                  //Byte3 is almost invariably 0x01
+
+                  $uType[$i]['id'] = (($byte1 << 16) | 
+                                     ($byte2 << 8)  | 
+                                      $byte3) & 0xFFFFFF;
 
 									$nByte = $this->readByte($string,$numByte);
-                  							$uType[$i]['count'] =   ($nBytes[3] & $offsetHeadMask) |
-                                       								($nByte     & $offsetTailMask);
+                  $uType[$i]['count'] = ($nBytes[3] & $offsetHeadMask) |
+                                        ($nByte     & $offsetTailMask);
+
+                  if($this->debug){
+                    $this->debug(sprintf("  %d x 0x%06X", $uType[$i]['count'], $uType[$i]['id']));
+                  }
 
 								}
 								$lByte = $this->readByte($string,$numByte);
                 
-                						$totalUnits =   ($nByte & $offsetHeadMask) |
-                              							($lByte & $offsetTailMask);
+                $totalUnits = ($nByte & $offsetHeadMask) |
+                  ($lByte & $offsetTailMask);
 
-								//Populate the unitsDict
-								foreach($uType as $unitType){
-								  for($i = 1; $i <= $unitType['count']; $i++){
-								    $nBytes = unpack("C4", $this->readBytes($string, $numByte,4));
-								    $byte1 = ($lByte      & $offsetHeadMask) |
-									     (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-								    $byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
-									     (($nBytes[2] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-								    $byte3 = (($nBytes[2] & $offsetWTailMask) << $dsuExtraBits) |
-									     (($nBytes[3] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-								    $byte4 = (($nBytes[3] & $offsetWTailMask) << $dsuExtraBits) |
-									     ( $nBytes[4] & $offsetTailMask);
+                if($this->debug){ 
+                  $this->debug(sprintf("TOTAL: %d", $totalUnits));
+                }
 
-								    $uid = ($byte1 << 8) | $byte2;
-								    //Bytes 3 + 4 contain Flag Info
-								    
-								    $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
 
-								    $lByte = $nBytes[4]; //For looping.
-								  }
-								}
+                //Populate the unitsDict
+                foreach($uType as $unitType){
+                  for($i = 1; $i <= $unitType['count']; $i++){
+                    $nBytes = unpack("C4", $this->readBytes($string, $numByte,4));
+                    $byte1 = ($lByte      & $offsetHeadMask) |
+                             (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+                    $byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
+                             (($nBytes[2] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+                    $byte3 = (($nBytes[2] & $offsetWTailMask) << $dsuExtraBits) |
+                             (($nBytes[3] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+                    $byte4 = (($nBytes[3] & $offsetWTailMask) << $dsuExtraBits) |
+                             ( $nBytes[4] & $offsetTailMask);
+
+                    $uid = ($byte1 << 8) | $byte2;
+                    //Bytes 3 + 4 contain Flag Info
+                    
+                    $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
+
+                    if($this->debug){
+                      $this->debug(sprintf("  0x%06X -> 0x%02X", $unitType['id'], $uid));
+                    }
+
+                    $lByte = $nBytes[4]; //For looping.
+                  }
+                }
 
 							} else { // byte-aligned
 								$uTypesCount = $this->readByte($string,$numByte);
+                if($this->debug){
+                  $this->debug(sprintf("Number of New Unit Types %d", $uTypesCount));
+                }
 								for ($i = 1;$i <= $uTypesCount;$i++) {
 									$uType[$i]['id'] = $this->readUnitTypeID($string,$numByte);
 									$uType[$i]['count'] = $this->readByte($string,$numByte);
+                  if($this->debug){
+                    $this->debug(sprintf("  %d x 0x%06X", $uType[$i]['count'], $uType[$i]['id']));
+                  }
 								}
 								$totalUnits = $this->readByte($string,$numByte);
+                if($this->debug){
+                  $this->debug(sprintf("TOTAL: %d", $totalUnits));
+                }
 
-								//Populate the Units Dict
-								foreach($uType as $unitType){
-								  for($i = 1; $i <= $unitType['count']; $i++){
-								    $nBytes = unpack("C4", $this->readBytes($string, $numByte, 4));
-								    $uid = ($nBytes[1] << 8) | $nBytes[2];
+                //Populate the Units Dict
+                foreach($uType as $unitType){
+                  for($i = 1; $i <= $unitType['count']; $i++){
+                    $nBytes = unpack("C4", $this->readBytes($string, $numByte, 4));
+                    $uid = ($nBytes[1] << 8) | $nBytes[2];
 
-								    $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
-								  }
-								}
+                    $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
+                    if($this->debug){
+                      $this->debug(sprintf("  0x%06X -> 0x%02X", $unitType['id'], $uid));
+                    }
+                  }
+                }
 							}
 							
 							//update apm fields
@@ -797,16 +836,15 @@ class SC2Replay {
 		}
 		return $numEvents;
 	}
-
-	// inserts unit into the unit dictionary and updates $time seen
-	private function addSelectedUnit($uId, $uType, $playerId, $time){
-	  if(!isset($this->unitsDict[$playerId][$uId])){
-	    //First Time Seen
-	    $this->unitsDict[$playerId][$uId]['type'] = $uType;
-	    $this->unitsDict[$playerId][$uId]['firstSeen'] = $time;
-	  }
-	  $this->unitsDict[$playerId][$uId]['lastSeen'] = $time;
-	}
+  // inserts unit into the unit dictionary and updates $time seen
+  private function addSelectedUnit($uId, $uType, $playerId, $time){
+    if(!isset($this->unitsDict[$playerId][$uId])){
+      //First Time Seen
+      $this->unitsDict[$playerId][$uId]['type'] = $uType;
+      $this->unitsDict[$playerId][$uId]['firstSeen'] = $time;
+    }
+    $this->unitsDict[$playerId][$uId]['lastSeen'] = $time;
+  }
 
 	// updates apm array and total action count for $playerId, $time is in seconds
 	private function addPlayerAction($playerId, $time) {
