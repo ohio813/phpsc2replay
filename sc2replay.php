@@ -31,7 +31,7 @@ class SC2Replay {
 	private $debugNewline; // contents are appended to the end of all debug messages
 	private $messages; // contains an array of the chat log messages
 	private $winnerKnown;
-  private $unitsDict;
+	private $unitsDict;
 	
 	function __construct() {
 		$this->players = array();
@@ -111,7 +111,7 @@ class SC2Replay {
 		$o .= "$secs secs";
 		return $o;
 	}
-  function getUnits() { return $this->unitsDict; }
+	function getUnits() { return $this->unitsDict; }
 	function getEvents() { return $this->events; }
 	function getGameLength() { return $this->gameLength; }
 	// parse replay.details file and add parsed stuff to the object
@@ -210,6 +210,7 @@ class SC2Replay {
 		$p["ptype"] = "";
 		$p["handicap"] = 0;
 		$p["isComp"] = false;
+		$p["uid"] = $keys[8];
 		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $p["color"]));
 		return $p;
 	}
@@ -221,10 +222,8 @@ class SC2Replay {
 		$numAttribs = $this->readUInt32($string,$numByte);
 		$attribArray = array();
 		for ($i = 0;$i < $numAttribs;$i++) {
-			$attribHeader = $this->readUInt16($string,$numByte);
-			$numByte += 2; //skip the 00 00 bytes
-			$attributeId = $this->readUInt16($string,$numByte);
-			$numByte += 2; //skip another 00 00 bytes
+			$attribHeader = $this->readUInt32($string,$numByte);
+			$attributeId = $this->readUInt32($string,$numByte);
 			$playerId = $this->readByte($string,$numByte);
 			$attribVal = "";
 			// values are stored in reverse in the file, eg Terr becomes rreT. The following loop flips the value and removes excess null bytes
@@ -355,17 +354,6 @@ class SC2Replay {
 		}
 	}
 	
-
-	/*private function parseKeyVal($string, &$numByte) {
-		$one = $this->readByte($string,$numByte); //$one[1];
-		if (($one & 192) > 0) { // check if value is two bytes
-			$two = unpack("v",substr($string,$numByte -1,2));
-			$two = ($two[1] >> 2); // get rid of extra bits
-			$numByte += 1;
-			return $two;
-		}
-		return $one;
-	}*/
 	// parse a key/value -pair struct in the replay.details file
 	private function parseKeyVal($string, &$numByte) {
 		$one = unpack("C",substr($string,$numByte,1)); 

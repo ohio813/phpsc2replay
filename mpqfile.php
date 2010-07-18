@@ -396,7 +396,7 @@ class MPQFile {
 			$tmp = bzdecompress($string);
 			return $tmp;
 		}
-		if ($this->debug) $this->debug("Function 'bzdecompress' does not exist, is gzlib installed as a module?");
+		if ($this->debug) $this->debug("Function 'bzdecompress' does not exist, is bzip2 installed as a module?");
 		return false;
 	}
 
