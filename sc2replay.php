@@ -210,6 +210,7 @@ class SC2Replay {
 		$p["ptype"] = "";
 		$p["handicap"] = 0;
 		$p["isComp"] = false;
+		$p["uid"] = $keys[8];
 		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $p["color"]));
 		return $p;
 	}
@@ -221,10 +222,8 @@ class SC2Replay {
 		$numAttribs = $this->readUInt32($string,$numByte);
 		$attribArray = array();
 		for ($i = 0;$i < $numAttribs;$i++) {
-			$attribHeader = $this->readUInt16($string,$numByte);
-			$numByte += 2; //skip the 00 00 bytes
-			$attributeId = $this->readUInt16($string,$numByte);
-			$numByte += 2; //skip another 00 00 bytes
+			$attribHeader = $this->readUInt32($string,$numByte);
+			$attributeId = $this->readUInt32($string,$numByte);
 			$playerId = $this->readByte($string,$numByte);
 			$attribVal = "";
 			// values are stored in reverse in the file, eg Terr becomes rreT. The following loop flips the value and removes excess null bytes
@@ -269,7 +268,7 @@ class SC2Replay {
 						case "VyHd":
 							$tmp = 4;
 							break;
-						case "VyHd":
+						case "Hard":
 							$tmp = 3;
 							break;
 						case "Medi":
