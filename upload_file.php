@@ -49,6 +49,7 @@ function toggleVisible(id) {
 <p><b>NOTE: this test page can only parse replays from SC2 beta phase 2</b><br />
 Expect gazillion error messages if you try an older replay file.</p>
 <p><b>NOTE 2: Computer opponents' events are not recorded in replays (Meaning no apm or build orders of computer opponents)</b></p>
+<p>The source code and other documentation is available at <a href="https://code.google.com/p/phpsc2replay/" target=_blank>https://code.google.com/p/phpsc2replay/</a></p>
 <form enctype="multipart/form-data" action="upload_file.php" method="POST">
     <input type="hidden" name="MAX_FILE_SIZE" value="<?php echo $MAX_FILE_SIZE;?>" />
     Choose file to upload: <input name="userfile" type="file" /><br />
