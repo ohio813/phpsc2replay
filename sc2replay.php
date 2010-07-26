@@ -55,7 +55,16 @@ class SC2Replay {
 		$this->gameLength = $mpqfile->getGameLength();
 		$this->version = $mpqfile->getVersion();
 		$this->build = $mpqfile->getBuild();
-		// first parse replay.details file
+		
+		$file = $mpqfile->readFile("replay.initData");
+		$start = microtime_float();
+		if ($file !== false) {
+			$this->parseInitDataFile($file);
+		}
+		else if ($this->debug) $this->debug("Error reading the replay.initData file");
+		if ($this->debug) $this->debug(sprintf("Parsed replay.initData file in %d ms.",(microtime_float() - $start)*1000));
+		
+		// then parse replay.details file
 		$file = $mpqfile->readFile("replay.details");
 		$start = microtime_float();
 		if ($file !== false) {
@@ -114,6 +123,27 @@ class SC2Replay {
 	function getUnits() { return $this->unitsDict; }
 	function getEvents() { return $this->events; }
 	function getGameLength() { return $this->gameLength; }
+	// parse replay.initData file for player names
+	function parseInitDataFile($string) {
+		$numByte = 0;
+		$numPlayers = $this->readByte($string,$numByte);
+		$nullName = false;
+		for ($i = 1;$i <= $numPlayers;$i++) {
+			$nickLen = $this->readByte($string,$numByte);
+			if ($nickLen > 0) {
+				$name = $this->readBytes($string,$numByte,$nickLen);
+				$this->players[$i] = array( "name" => $name, "isObs" => TRUE, "id" => $i, "isComp" => FALSE, "team" => 0 ); // set initial values
+				$numByte += 5;
+			} 
+			else {
+				if (!$nullName) {
+					$nullName = true;
+					$numByte--;
+				}
+				$numByte += 5;
+			}
+		}
+	}
 	// parse replay.details file and add parsed stuff to the object
 	// $string contains the contents of the file
 	function parseDetailsFile($string) {
@@ -122,11 +152,7 @@ class SC2Replay {
 		$numByte += 6; 
 		$numPlayers = $this->readByte($string,$numByte) / 2;
 		for ($i = 1; $i <= $numPlayers;$i++) {
-			$p = $this->parsePlayerStruct($string,$numByte);
-			if ($p !== NULL) {
-				$p['id'] = $i;
-				$this->players[$i] = $p;
-			}
+			$p = $this->parsePlayerStruct($string,$numByte,$i);
 		}
 		$mapnameLen = $this->readByte($string,$numByte) / 2;
 		$this->mapName = $this->readBytes($string,$numByte,$mapnameLen);
@@ -142,7 +168,7 @@ class SC2Replay {
 	}
 	
 	// parse a player struct in the replay.details file
-	private function parsePlayerStruct($string,&$numByte) {
+	private function parsePlayerStruct($string,&$numByte,$id) {
 		$numByte += 4;
 		$sNameLen = $this->readByte($string,$numByte) / 2;
 		if ($sNameLen > 0) $sName = $this->readBytes($string,$numByte,$sNameLen);
@@ -166,11 +192,7 @@ class SC2Replay {
 			foreach ($keys as $k => $v)
 				$this->debug("Got pre-race($sName) key: $k, value: $v");
 		}
-/*		$lNameLen = $this->readByte($string,$numByte) / 2;
-		if ($lNameLen > 0) $lName = $this->readBytes($string,$numByte,$lNameLen);
-		else $lName = NULL;
-		*/
-		//$numByte += 2; // 04 02
+
 		$raceLen = $this->readByte($string,$numByte) / 2;
 		if ($raceLen > 0) $race = $this->readBytes($string,$numByte,$raceLen);
 		else $race = NULL;
@@ -194,25 +216,26 @@ class SC2Replay {
 		}
 		if (($sName === NULL)) {
 			if ($this->debug) $this->debug("Got null player");
-			return NULL;
+			return;
 		}
-		$p = array();
-		$p["sName"] = $sName; // deprecated array value before there was only a short name
-		$p["name"] = $sName; // player name
-		$p["race"] = $race; // player race
-		$p["party"] = $party;
-		$p["team"] = 0;
-		$p["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
-		$p["apmtotal"] = 0;
-		$p["apm"] = array();
-		$p["firstevents"] = array();
-		$p["numevents"] = array();
-		$p["ptype"] = "";
-		$p["handicap"] = 0;
-		$p["isComp"] = false;
-		$p["uid"] = $keys[8];
-		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $p["color"]));
-		return $p;
+
+		// $this->players[$id]["sName"] = $sName; // deprecated array value before there was only a short name
+		$this->players[$id]["name"] = $sName; // player name
+		$this->players[$id]["race"] = $race; // player race
+		$this->players[$id]["party"] = $party;
+		$this->players[$id]["team"] = 0;
+		$this->players[$id]["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
+		$this->players[$id]["apmtotal"] = 0;
+		$this->players[$id]["apm"] = array();
+		$this->players[$id]["firstevents"] = array();
+		$this->players[$id]["numevents"] = array();
+		$this->players[$id]["ptype"] = "";
+		$this->players[$id]["handicap"] = 0;
+		$this->players[$id]["isComp"] = false;
+		$this->players[$id]["uid"] = $keys[8];
+		$this->players[$id]["isObs"] = false; // all players present in replay.details file are not observers
+		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $this->players[$id]["color"]));
+		return;
 	}
 	
 	// parameter is the contents of the replay.attributes.events file
@@ -234,7 +257,7 @@ class SC2Replay {
 			$numByte += 4;
 			$attribArray[$playerId][$attributeId] = $attribVal;
 			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d (%s), attribVal = \"%s\"",
-							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["sName"]),$attribVal));
+							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["name"]),$attribVal));
 			switch ($attributeId) {
 				// FFA
 /*				case 0x07D6:
@@ -403,7 +426,7 @@ class SC2Replay {
 	public function getActualPlayers() {
 		$tmp = array();
 		foreach ($this->players as $val)
-			if ($val['party'] > 0)
+			if ($val['team'] > 0)
 				$tmp[] = $val;
 		return $tmp;
 	}
@@ -453,7 +476,7 @@ class SC2Replay {
 			$globalEventFlag = $nextByte & 16; // 4th bit
 			$playerId = $nextByte & 15; // bits 5-8
 			if (isset($this->players[$playerId]))
-				$playerName = $this->players[$playerId]['sName'];
+				$playerName = $this->players[$playerId]['name'];
 			else
 				$playerName = "";
 			$eventCode = $this->readByte($string,$numByte);
@@ -485,7 +508,7 @@ class SC2Replay {
 				case 0x01: // action
 					switch ($eventCode) {
 						case 0x09: // player quits the game
-							if ($this->players[$playerId]['party'] > 0) // don't log observers/party members etc
+							if ($this->players[$playerId]['team'] > 0) // don't log observers/party members etc
 								$playerLeft[] = $playerId;
 							break;
 						case 0x0B: // player uses an ability
@@ -805,10 +828,11 @@ class SC2Replay {
 		// if the number of players who left is $numActual - 1, then everyone else except the recorder left and he is the winner
 		// if the number of players who left is $numActual - 2, then whoever left after the recorder is the winner. can be determined if the recorder is known.
 		// otherwise the winner cannot be determined, since any one of the players who left after the recorder could be the winner
-		if ($numLeft == ($numActual - 1)) {
+		if ($numLeft >= ($numActual - 1)) {
 			if ($this->debug) $this->debug("Found winner");
-			$this->players[$lastLeaver]['won'] = 0;
+			$this->players[$lastLeaver]['won'] = 1;
 			$this->winnerKnown = true;
+			$winteam = $this->players[$lastLeaver]['team'];
 		}
 		else {
 			if ($this->debug) $this->debug("Unable to parse winner");
@@ -816,11 +840,9 @@ class SC2Replay {
 		}
 
 		foreach ($this->players as $val) {
-			if (($val['party'] > 0) && (!isset($val['won']))) $winteam = $val['party'];
-		}
-		foreach ($this->players as $val) {
-			if ($val['party'] == $winteam) $this->players[$val['id']]['won'] = 1;
-			else if ($val['party'] > 0) $this->players[$val['id']]['won'] = 0;
+			if ($val['isObs']) continue;
+			if ($val['team'] == $winteam) $this->players[$val['id']]['won'] = 1;
+			else $this->players[$val['id']]['won'] = 0;
 		}
 		return $numEvents;
 	}
@@ -836,7 +858,7 @@ class SC2Replay {
 
 	// updates apm array and total action count for $playerId, $time is in seconds
 	private function addPlayerAction($playerId, $time) {
-		if (!isset($this->players[$playerId]))
+		if (!isset($this->players[$playerId]) || $this->players[$playerId]['isObs'])
 			return;
 		$this->players[$playerId]['apmtotal']++;
 		if (isset($this->players[$playerId]['apm'][$time]))

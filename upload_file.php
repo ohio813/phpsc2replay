@@ -175,8 +175,18 @@ if (isset($_FILES['userfile'])) {
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				
 				$apmString = "<b>APM graphs</b><br />\n";
+				$obsString = "";
+				$obsCount = 0;
 				echo "<table border=\"1\"><tr><th>Player name</th><th>Race</th><th>Color</th><th>Team</th><th>Average APM<br />(experimental)</th><th>Winner?</th></tr>\n";
 				foreach($players as $value) {
+					if ($value['isObs']) {
+						if ($obsString == "")
+							$obsString = $value['name'];
+						else
+							$obsString .= ', '.$value['name'];
+						$obsCount++;
+						continue;
+					}
 					if ($b->isWinnerKnown())
 						$wincolor = (isset($value['won']) && $value['won'] == 1)?0x00FF00:0xFF0000;
 					else
@@ -195,13 +205,16 @@ if (isset($_FILES['userfile'])) {
 									((isset($value['won']))?$wincolor:0xFFFFFF),
 									(isset($value['won']))?$value['won']:(($value['team'] > 0)?"Unknown":"-")
 								);
-					if ($value['team'] > 0 && $value['ptype'] != 'Comp') {
+					if (!$value['isObs'] && $value['ptype'] != 'Comp') {
 						$apmFileName = $value['id']."_".md5($name).".png";
 						createAPMImage($value['apm'],$b->getGameLength(),$apmFileName);
-						$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['sName']);
+						$apmString .= sprintf("%s:<br /><img src=\"$apmFileName\" /><br />\n",$value['name']);
 					}
 				}
 				echo "</table><br />";
+				if ($obsCount > 0) {
+					echo "Observers ($obsCount): $obsString<br />\n";
+				}
 				$messages = $b->getMessages();
 				if (count($messages) > 0) {
 					echo "<b>Messages:</b><br /><table border=\"1\"><tr><th>Time</th><th>Player</th><th>Target</th><th>Message</th></tr>\n";
@@ -217,21 +230,21 @@ if (isset($_FILES['userfile'])) {
 				
 				$t = $b->getEvents();
 				if (class_exists('SC2ReplayUtils')) {
-?>
-<div>
-<span><b>Click on the following links to show/hide events</b></span><br />
-<span><a href="#" onClick="return toggleVisible('allevents');">All events</a></span>
-<span><a href="#" onClick="return toggleVisible('buildingevents');">Building events</a></span>
-<span><a href="#" onClick="return toggleVisible('unitevents');">Unit events</a></span>
-<span><a href="#" onClick="return toggleVisible('upgradeevents');">Upgrade events</a></span>
-</div>
-<div>		
-<?php
+				?>
+				<div>
+				<span><b>Click on the following links to show/hide events</b></span><br />
+				<span><a href="#" onClick="return toggleVisible('allevents');">All events</a></span>
+				<span><a href="#" onClick="return toggleVisible('buildingevents');">Building events</a></span>
+				<span><a href="#" onClick="return toggleVisible('unitevents');">Unit events</a></span>
+				<span><a href="#" onClick="return toggleVisible('upgradeevents');">Upgrade events</a></span>
+				</div>
+				<div>		
+				<?php
 					//create table of all events
 					echo "<div id=\"allevents\" style=\"display: block\" class=\"events\"><h2>All events:</h2><table class=\"events\"><tr><th>Timecode</th>\n";
 					$pNum = count($players);
 					foreach ($players as $value) {
-					  if ($value['team'] > 0 && $value['ptype'] != 'Comp')
+					  if (!$value['isObs'] && $value['ptype'] != 'Comp')
 						echo sprintf("<th>%s (%s)</th>",$value['name'],$value['race']);
 					}
 					echo "</tr>\n";
@@ -242,7 +255,7 @@ if (isset($_FILES['userfile'])) {
 							if ($eventarray['type'] == SC2_TYPEGEN && !isset($_POST['debug'])) continue;
 							echo sprintf("<tr><td>%d sec</td>",$value['t'] / 16);
 							foreach ($players as $value2) {
-								if ($value2['team'] == 0 || $value2['ptype'] == 'Comp') continue;
+								if ($value2['isObs'] || $value2['ptype'] == 'Comp') continue;
 								if ($value['p'] == $value2['id'])
 									echo sprintf("<td>%s%s</td>",$eventarray['desc'],(isset($_POST['debug']))?sprintf(" (%06X)",$value['a']):"");
 								else
@@ -256,7 +269,7 @@ if (isset($_FILES['userfile'])) {
 					$upgradeDiv = "<div id=\"upgradeevents\" style=\"display: none\" class=\"events\"><h2>Upgrades:</h2>";
 					// create ability breakdown tables
 					foreach ($players as $value) {
-						if ($value['ptype'] == 'Comp') continue;
+						if ($value['isComp'] || $value['isObs']) continue;
 						$buildingTable = sprintf("<table class=\"events\"><tr><th><font color=\"#%s\">%s</font></th><th>First seen</th><th>Total</th></tr>\n",
 									  $value['color'],
 									  $value['name']);
