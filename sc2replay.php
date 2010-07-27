@@ -842,7 +842,7 @@ class SC2Replay {
 			$this->players[$lastLeaver]['won'] = -1;
 			$this->winnerKnown = true;
 			foreach ($this->getActualPlayers() as $value) {
-				if ($value['won'] == -1) continue;
+				if (isset($value['won']) && $value['won'] == -1) continue;
 				$winteam = $value['team'];
 			}
 		}
