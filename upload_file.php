@@ -168,7 +168,7 @@ if (isset($_FILES['userfile'])) {
 			if ($init == MPQ_ERR_NOTMPQFILE)
 				echo "Error parsing uploaded file, make sure it is a valid MPQ archive!<br />\n";
 			else {
-				echo sprintf("Major version %d, build %d<br />\n",$a->getVersion(),$a->getBuild());
+				echo sprintf("Version: %s<br />\n",$a->getVersionString());
 				$b = $a->parseReplay();
 				$parseDurationString .= sprintf("Parsed replay in %d ms.<br />\n",((microtime_float() - $start)*1000));
 				$players = $b->getPlayers();

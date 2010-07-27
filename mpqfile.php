@@ -40,6 +40,7 @@ class MPQFile {
 	private $debug;
 	private $debugNewline;
 	private $gameLen;
+	private $versionString;
 	public static $cryptTable;
 	
 	function __construct($filename, $autoparse = true, $debug = 0) {
@@ -56,6 +57,7 @@ class MPQFile {
 		$this->sectorSize = 0;
 		$this->debug = $debug;
 		$this->debugNewline = "<br />\n";
+		$this->versionString = "null";
 		if (!self::$cryptTable)
 			self::initCryptTable();
 		
@@ -98,6 +100,8 @@ class MPQFile {
 				$dataString = fread($fp,$uDataSize - 30);
 				$numByte = 0;
 				$loop = 0;
+				$versiontemp1 = 0;
+				$versiontemp2 = 0;
 				while ($numByte < ($uDataSize - 30)) {
 					$key = unpack("C2",substr($dataString,$numByte,2));
 					$numByte += 2;
@@ -106,10 +110,16 @@ class MPQFile {
 						$this->debug(sprintf("User header key: %02X %02X value: %d",$key[1],$key[2],$value));
 					if ($loop == 0) {
 						switch ($key[1]) {
-							case 0x04: // major version
+							case 0x02: // major version
 								$this->verMajor = $value / 2;
+								break;	
+							case 0x04: // minor version
+								$versiontemp1 = $value / 2;
 								break;
-							case 0x0A:
+							case 0x06: // minorer? version
+								$versiontemp2 = $value / 2;
+								break;
+							case 0x08;
 								$this->build = $value / 2;
 								$loop++;
 								break;
@@ -125,7 +135,7 @@ class MPQFile {
 						}
 					}
 				}
-				
+				$this->versionString = sprintf("%d.%d.%d.%d",$this->verMajor,$versiontemp1,$versiontemp2,$this->build);
 				/*
 				$verMajor =  $this->readUInt16();
 				$this->verMajor = $verMajor;
@@ -366,6 +376,7 @@ class MPQFile {
 	}
 	function getBuild() { return $this->build; }
 	function getVersion() { return $this->verMajor; }
+	function getVersionString() { return $this->versionString; }
 	function getGameLength() { return $this->gameLen; }
 	private function parseKeyVal($string, &$numByte) {
 		$one = unpack("C",substr($string,$numByte,1)); 
