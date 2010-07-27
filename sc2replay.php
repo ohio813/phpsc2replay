@@ -773,8 +773,17 @@ class SC2Replay {
 							// total have been observed
 							// initial camera event has the I value set as D (13)
 							$numByte += 3;
-							for ($tmp = $this->readByte($string,$numByte);($tmp & 0xF0) >= 0xA0;$numByte++,$tmp = $this->readByte($string,$numByte));
-
+							$nByte = $this->readByte($string,$numByte);
+							if (($nByte & 0x10) > 0) {
+								$numByte ++;
+								$nByte = $this->readByte($string,$numByte);
+								if (($nByte & 0xF0) >= 0x20) {
+									$numByte ++;
+									$nByte = $this->readByte($string,$numByte);
+									if (($nByte & 0x40) > 0)
+										$numByte += 2;
+								}
+							}
 							break;
 						default:
 						if ($this->debug) $this->debug(sprintf("DEBUG: Timestamp: %d, Type: %d, Global: %d, Player ID: %d (%s), Event code: %02X Byte: %08X<br />\n",
@@ -822,13 +831,22 @@ class SC2Replay {
 		foreach ($playerLeft as $val) {
 			// mark the previous leaver as a loser
 			if ($lastLeaver != -1) 
-				$this->players[$val]['won'] = 0;
+				$this->players[$val]['won'] = -1;
 			$lastLeaver = $val;
 		}
 		// if the number of players who left is $numActual - 1, then everyone else except the recorder left and he is the winner
 		// if the number of players who left is $numActual - 2, then whoever left after the recorder is the winner. can be determined if the recorder is known.
 		// otherwise the winner cannot be determined, since any one of the players who left after the recorder could be the winner
-		if ($numLeft >= ($numActual - 1)) {
+		if ($numLeft == ($numActual - 1)) {
+			if ($this->debug) $this->debug("Found winner");
+			$this->players[$lastLeaver]['won'] = -1;
+			$this->winnerKnown = true;
+			foreach ($this->getActualPlayers() as $value) {
+				if ($value['won'] == -1) continue;
+				$winteam = $value['team'];
+			}
+		}
+		else  if ($numLeft == ($numActual)) {
 			if ($this->debug) $this->debug("Found winner");
 			$this->players[$lastLeaver]['won'] = 1;
 			$this->winnerKnown = true;
@@ -839,8 +857,7 @@ class SC2Replay {
 			return $numEvents;
 		}
 
-		foreach ($this->players as $val) {
-			if ($val['isObs']) continue;
+		foreach ($this->getActualPlayers() as $val) {
 			if ($val['team'] == $winteam) $this->players[$val['id']]['won'] = 1;
 			else $this->players[$val['id']]['won'] = 0;
 		}
