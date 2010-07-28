@@ -762,27 +762,21 @@ class SC2Replay {
 						case 0xD1:
 						case 0xE1:
 						case 0xF1:
-							// assume AB CD EF GH IJ, where AB is event code (0x01-0xF1)
-							// and CD EF GH IJ are the next four bytes, each letter corresponds to 4 bits
-							// x-coordinate would be ACDF and y-coordinate EGHJ
-							// where A and E are most significant
-							// I is some kind of flag, value higher than 9 indicates at least 2 extra bytes
-							// similarly, in the following 2 extra bytes, VW XY,
-							// X is a flag value, if  > 9 then 2 extra bytes are read
-							// extra bytes occur when camera is zoomed in or out. No more than 4 extra bytes
-							// total have been observed
-							// initial camera event has the I value set as D (13)
 							$numByte += 3;
 							$nByte = $this->readByte($string,$numByte);
-							if (($nByte & 0x10) > 0) {
-								$numByte ++;
-								$nByte = $this->readByte($string,$numByte);
-								if (($nByte & 0xF0) >= 0x20) {
-									$numByte ++;
+							switch (($nByte & 0x70)) {
+								case 0x10: // zoom camera up or down
+								case 0x30: // only 0x10 matters, but due to 0x70 mask in comparison, check for this too
+									$numByte++;
 									$nByte = $this->readByte($string,$numByte);
-									if (($nByte & 0x40) > 0)
-										$numByte += 2;
-								}
+								case 0x20:
+									if (($nByte & 0x20) > 0) { // zooming, if comparison is 0 max/min zoom reached
+										$numByte++;
+										$nByte = $this->readByte($string,$numByte);
+									}
+									if (($nByte & 0x40) == 0) break; // if non-zero (as in 0x40), rotate segment(2 bytes) follows
+								case 0x40: // rotate camera
+									$numByte += 2;
 							}
 							break;
 						default:
