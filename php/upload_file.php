@@ -15,6 +15,9 @@
 */
 ?>
 
+<?php
+$MAX_FILE_SIZE = 4000000;
+?>
 <html>
 <head>
 <style type="text/css">
@@ -54,6 +57,7 @@ Expect gazillion error messages if you try an older replay file.</p>
     <input type="hidden" name="MAX_FILE_SIZE" value="<?php echo $MAX_FILE_SIZE;?>" />
     Choose file to upload: <input name="userfile" type="file" /><br />
 	<label for="debug">Debug?</label><input type="checkbox" name="debug" value="1" /><br />
+	<label for="test">Test stuff?</label><input type="checkbox" name="test" value="1" /><br />
 	<br /><br />
     <input type="submit" value="Upload File" />
 </form>
@@ -128,7 +132,7 @@ function createAPMImage($vals, $length, $fn) {
 }
 
 
-$MAX_FILE_SIZE = 1000000;
+
 if (isset($_FILES['userfile'])) {
 	$error = $_FILES['userfile']['error'];
 	$type = $_FILES['userfile']['type'];
@@ -159,15 +163,25 @@ if (isset($_FILES['userfile'])) {
 		if (class_exists("MPQFile") || (include 'mpqfile.php')) {
 			$start = microtime_float();
 			$parseDurationString = "";
-			if ($_POST['debug'] == 1) {
+			$debug = 0;
+			if ($_POST['debug'] == 1 || $_POST['test'] == 1) {
 				echo sprintf("<b>Debugging is on.</b><br />\n");
+				$debug = 2;
 			}
-			$a = new MPQFile($tmpname,true,(($_POST['debug'] == 1)?2:0));
+			$a = new MPQFile($tmpname,true,$debug);
 			$init = $a->getState();
-
+			
+			if (isset($_POST['test']) && $_POST['test'] == 1) {
+				if (class_exists("SC2Replay") || (include 'sc2replay.php')) {
+					$tmp = MPQFile::encryptStuff($a->getHashTable(),$a->hashStuff("(hash table)", MPQ_HASH_FILE_KEY));
+					$newData = MPQFile::insertChatLogMessage("testing testing", 1, 1, $a->readFile("replay.message.events"));
+					$newData = MPQFile::insertChatLogMessage("testing 2", 1, 25, $newData);
+					$a->replaceFile("replay.message.events", $newData);
+				}
+			}
 			if ($init == MPQ_ERR_NOTMPQFILE)
 				echo "Error parsing uploaded file, make sure it is a valid MPQ archive!<br />\n";
-			else {
+			else if ($a->getFileType() == MPQ_SC2REPLAYFILE) {
 				echo sprintf("Version: %s<br />\n",$a->getVersionString());
 				$b = $a->parseReplay();
 				$parseDurationString .= sprintf("Parsed replay in %d ms.<br />\n",((microtime_float() - $start)*1000));
@@ -312,6 +326,20 @@ if (isset($_FILES['userfile'])) {
 					echo $unitDiv . "</div>";
 					echo $upgradeDiv . "</div>";
 					echo "</div>";
+				}
+			}
+			else if ($a->getFileSize("DocumentHeader") > 0 && $a->getFileSize("Minimap.tga") > 0) { // possibly SC2 map file
+				if (class_exists("SC2Map") || (include 'sc2map.php')) {
+					$sc2map = new SC2Map();
+					$sc2map->parseMap($a);
+					echo "<table>";
+					echo sprintf("<tr><td>Map name:</td><td>%s</td></tr>\n",$sc2map->getMapName());
+					echo sprintf("<tr><td>Author:</td><td>%s</td></tr>\n",$sc2map->getAuthor());
+					echo sprintf("<tr><td>Short description:</td><td>%s</td></tr>\n",preg_replace('/<[^>]+>/','',$sc2map->getShortDescription()));
+					echo sprintf("<tr><td>Long description:</td><td>%s</td></tr>\n",preg_replace('/<[^>]+>/','',$sc2map->getLongDescription()));
+					$minimapfilename = md5($sc2map->getMapName()).".png";
+					imagepng($sc2map->getMiniMapData(),$minimapfilename);
+					echo sprintf("</table>Minimap:<br /><img src=\"$minimapfilename\" /><br />\n");
 				}
 			}
 			echo sprintf("<p>Peak memory usage: %d bytes<br /></p>\n",memory_get_peak_usage(true));

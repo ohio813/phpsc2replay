@@ -126,12 +126,12 @@ class SC2Replay {
 	// parse replay.initData file for player names
 	function parseInitDataFile($string) {
 		$numByte = 0;
-		$numPlayers = $this->readByte($string,$numByte);
+		$numPlayers = MPQFile::readByte($string,$numByte);
 		$nullName = false;
 		for ($i = 1;$i <= $numPlayers;$i++) {
-			$nickLen = $this->readByte($string,$numByte);
+			$nickLen = MPQFile::readByte($string,$numByte);
 			if ($nickLen > 0) {
-				$name = $this->readBytes($string,$numByte,$nickLen);
+				$name = MPQFile::readBytes($string,$numByte,$nickLen);
 				$this->players[$i] = array( "name" => $name, "isObs" => TRUE, "id" => $i, "isComp" => FALSE, "team" => 0 ); // set initial values
 				$numByte += 5;
 			} 
@@ -150,28 +150,28 @@ class SC2Replay {
 		if ($this->debug) $this->debug("Parsing replay.details file...");
 		$numByte = 0;
 		$numByte += 6; 
-		$numPlayers = $this->readByte($string,$numByte) / 2;
+		$numPlayers = MPQFile::readByte($string,$numByte) / 2;
 		for ($i = 1; $i <= $numPlayers;$i++) {
 			$p = $this->parsePlayerStruct($string,$numByte,$i);
 		}
-		$mapnameLen = $this->readByte($string,$numByte) / 2;
-		$this->mapName = $this->readBytes($string,$numByte,$mapnameLen);
+		$mapnameLen = MPQFile::readByte($string,$numByte) / 2;
+		$this->mapName = MPQFile::readBytes($string,$numByte,$mapnameLen);
 
 		$numByte += 2; // 04 02
-		$u1Len = $this->readByte($string,$numByte) / 2;
-		if ($u1Len > 0) $this->readByte($string,$numByte,$u1Len);
+		$u1Len = MPQFile::readByte($string,$numByte) / 2;
+		if ($u1Len > 0) MPQFile::readByte($string,$numByte,$u1Len);
 
 		
 		$numByte += 5; // 06 05 02 00 02
-		$minimapnameLen = $this->readByte($string,$numByte) / 2;
-		$minimapName = $this->readBytes($string,$numByte,$minimapnameLen);
+		$minimapnameLen = MPQFile::readByte($string,$numByte) / 2;
+		$minimapName = MPQFile::readBytes($string,$numByte,$minimapnameLen);
 	}
 	
 	// parse a player struct in the replay.details file
 	private function parsePlayerStruct($string,&$numByte,$id) {
 		$numByte += 4;
-		$sNameLen = $this->readByte($string,$numByte) / 2;
-		if ($sNameLen > 0) $sName = $this->readBytes($string,$numByte,$sNameLen);
+		$sNameLen = MPQFile::readByte($string,$numByte) / 2;
+		if ($sNameLen > 0) $sName = MPQFile::readBytes($string,$numByte,$sNameLen);
 		else $sName = NULL;
 
 		$numByte += 5; // 02 05 08 00 09
@@ -181,7 +181,7 @@ class SC2Replay {
 		$keys = array();
 		while ($hadKey) {
 			$hadKey = false;
-			$key = unpack("c2",$this->readBytes($string,$numByte,2));
+			$key = unpack("c2",MPQFile::readBytes($string,$numByte,2));
 			if ($key[2] == 9) { 
 				$hadKey = true; 
 				$keys[$key[1]] = $this->parseKeyVal($string,$numByte); 
@@ -193,15 +193,15 @@ class SC2Replay {
 				$this->debug("Got pre-race($sName) key: $k, value: $v");
 		}
 
-		$raceLen = $this->readByte($string,$numByte) / 2;
-		if ($raceLen > 0) $race = $this->readBytes($string,$numByte,$raceLen);
+		$raceLen = MPQFile::readByte($string,$numByte) / 2;
+		if ($raceLen > 0) $race = MPQFile::readBytes($string,$numByte,$raceLen);
 		else $race = NULL;
 		$numByte += 3; // 06 05 08
 		$hadKey = true;
 		while ($hadKey) {
 			$keyVal = "";
 			$hadKey = false;
-			$key = unpack("c2",$this->readBytes($string,$numByte,2));
+			$key = unpack("c2",MPQFile::readBytes($string,$numByte,2));
 			if ($key[2] == 9) { 
 				$hadKey = true;
 				$keyVal = $this->parseKeyVal($string,$numByte);
@@ -221,7 +221,8 @@ class SC2Replay {
 
 		// $this->players[$id]["sName"] = $sName; // deprecated array value before there was only a short name
 		$this->players[$id]["name"] = $sName; // player name
-		$this->players[$id]["race"] = $race; // player race
+		$this->players[$id]["lrace"] = $race; // locale-specific player race
+		$this->players[$id]["race"] = ""; // player race in english, populated by checking which workers they build
 		$this->players[$id]["party"] = $party;
 		$this->players[$id]["team"] = 0;
 		$this->players[$id]["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
@@ -242,12 +243,12 @@ class SC2Replay {
 	private function parseAttributesFile($string) {
 		if ($this->debug) $this->debug("Parsing replay.attributes.events file");
 		$numByte = 4; // skip the 4-byte header
-		$numAttribs = $this->readUInt32($string,$numByte);
+		$numAttribs = MPQFile::readUInt32($string,$numByte);
 		$attribArray = array();
 		for ($i = 0;$i < $numAttribs;$i++) {
-			$attribHeader = $this->readUInt32($string,$numByte);
-			$attributeId = $this->readUInt32($string,$numByte);
-			$playerId = $this->readByte($string,$numByte);
+			$attribHeader = MPQFile::readUInt32($string,$numByte);
+			$attributeId = MPQFile::readUInt32($string,$numByte);
+			$playerId = MPQFile::readByte($string,$numByte);
 			$attribVal = "";
 			// values are stored in reverse in the file, eg Terr becomes rreT. The following loop flips the value and removes excess null bytes
 			for ($a = 0;$a < 4;$a++) {
@@ -393,29 +394,9 @@ class SC2Replay {
 		}
 		return $retVal;
 	}
-	
-	private function readByte($string, &$numByte) {
-		$tmp = unpack("C",substr($string,$numByte,1));
-		$numByte++;
-		return $tmp[1];
-	}
-	private function readBytes($string, &$numByte, $length) {
-		$tmp = substr($string,$numByte,$length);
-		$numByte += $length;
-		return $tmp;
-	}
-	private function readUInt16($string, &$numByte) {
-		$tmp = unpack("v",substr($string,$numByte,2));
-		$numByte += 2;
-		return $tmp[1];
-	}
-	private function readUInt32($string, &$numByte) {
-		$tmp = unpack("V",substr($string,$numByte,4));
-		$numByte += 4;
-		return $tmp[1];
-	}
+
 	private function readUnitTypeID($string,&$numByte) {
-		return (($this->readByte($string,$numByte) << 16) | ($this->readByte($string,$numByte) << 8) | ($this->readByte($string,$numByte)));
+		return ((MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte)));
 	}
 	private function readUnitAbility($string) {
 		$bytes = unpack("C3",substr($string,4,3));
@@ -437,19 +418,18 @@ class SC2Replay {
 		$messages = array();
 		$totTime = 0;
 		while ($numByte < $len) {
-			$timestamp = $this->parseTimeStamp($string,$numByte);
-			$playerId = $this->readByte($string,$numByte);
-			$opcode = $this->readByte($string,$numByte);
+			$timestamp = self::parseTimeStamp($string,$numByte);
+			$playerId = MPQFile::readByte($string,$numByte);
+			$opcode = MPQFile::readByte($string,$numByte);
 			$totTime += $timestamp;
 			if ($opcode == 0x80) // header weird thingy?
 				$numByte += 4;
-//			else if ($opcode == 0x00 || $opcode == 0x02 || $opcode == 0x0a) { // message
 			else if (($opcode & 0x80) == 0) { // message
 				$messageTarget = $opcode & 3;
-				$messageLength = $this->readByte($string,$numByte);
+				$messageLength = MPQFile::readByte($string,$numByte);
 				if (($opcode & 8) == 8) $messageLength += 64;
 				if (($opcode & 16) == 16) $messageLength += 128;
-				$message = $this->readBytes($string,$numByte,$messageLength);
+				$message = MPQFile::readBytes($string,$numByte,$messageLength);
 				$messages[] = array('id' => $playerId, 'name' => $this->players[$playerId]['name'], 'target' => $messageTarget,
 									'time' => floor($totTime / 16), 'message' => $message);
 			}
@@ -460,6 +440,8 @@ class SC2Replay {
 		}
 		$this->messages = $messages;
 	}
+	
+
 	// parameter is the contents of the replay.game.events -file
 	private function parseGameEventsFile($string) {
 		$numByte = 0;
@@ -470,8 +452,8 @@ class SC2Replay {
 		$time = 0;
 		$numEvents = 0;
 		while ($numByte < $len) {
-			$timeStamp = $this->parseTimeStamp($string,$numByte);
-			$nextByte = $this->readByte($string,$numByte);
+			$timeStamp = self::parseTimeStamp($string,$numByte);
+			$nextByte = MPQFile::readByte($string,$numByte);
 			$eventType = $nextByte >> 5; // 3 lowest bits
 			$globalEventFlag = $nextByte & 16; // 4th bit
 			$playerId = $nextByte & 15; // bits 5-8
@@ -479,7 +461,7 @@ class SC2Replay {
 				$playerName = $this->players[$playerId]['name'];
 			else
 				$playerName = "";
-			$eventCode = $this->readByte($string,$numByte);
+			$eventCode = MPQFile::readByte($string,$numByte);
 			$time += $timeStamp;
 			$numEvents++;
 			// weird timestamp values mean that there's likely a problem with the alignment of the parse(too few/too many bytes read for an eventcode)
@@ -513,22 +495,37 @@ class SC2Replay {
 							break;
 						case 0x0B: // player uses an ability
 							// at least 32 bytes
-							$data = $this->readBytes($string,$numByte,32);
+							$data = MPQFile::readBytes($string,$numByte,32);
 							$reqTarget = unpack("C",substr($data,7,1));
 							$reqTarget = $reqTarget[1];
 							$ability = $this->readUnitAbility($data);
 							if ($ability != 0xFFFF0F) {
 								$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
 								$this->events = $events;
+								// populate non-locale-specific race strings based on worker type
+								if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
+									switch ($ability) {
+										case 0x080A00: //SCV
+											$this->players[$playerId]['race'] = "Terran";
+											break;
+										case 0x090E00: //probe
+											$this->players[$playerId]['race'] = "Protoss";
+											break;										
+										case 0x0B0000: //drone
+											$this->players[$playerId]['race'] = "Zerg";
+											break;
+									}
+								}
+								
 							}
 							// at least with attack, move, right-click, if the byte after unit ability bytes is 
 							// 0x30 or 0x50, the struct takes 1 extra byte. With build orders the struct seems to be 32 bytes
 							// and this byte is 0x00.
 							// might also be in some other way variable-length.
 							if ($reqTarget == 0x30) 
-								$data .= $this->readByte($string,$numByte); 
+								$data .= MPQFile::readByte($string,$numByte); 
 							if ($reqTarget == 0x50)
-								$data .= $this->readByte($string,$numByte);
+								$data .= MPQFile::readByte($string,$numByte);
 							// update apm array
 							$this->addPlayerAction($playerId, floor($time / 16));
 
@@ -548,8 +545,8 @@ class SC2Replay {
 						case 0x8C:
 						case 0x9C:
 						case 0xAC: // player changes selection
-							$selFlags = $this->readByte($string,$numByte);
-							$dsuCount = $this->readByte($string,$numByte);
+							$selFlags = MPQFile::readByte($string,$numByte);
+							$dsuCount = MPQFile::readByte($string,$numByte);
               if($this->debug){
                 $this->debug("Selection Change");
                 $this->debug(sprintf("Player %s", $playerId));
@@ -559,11 +556,11 @@ class SC2Replay {
 							$dsuExtraBits = $dsuCount % 8;
               $uType = array();
 							if ($dsuCount > 0)
-								$dsuMap = $this->readBytes($string,$numByte,floor($dsuCount / 8));
+								$dsuMap = MPQFile::readBytes($string,$numByte,floor($dsuCount / 8));
 							if ($dsuExtraBits != 0) { // not byte-aligned
-								$dsuMapLastByte = $this->readByte($string,$numByte);
+								$dsuMapLastByte = MPQFile::readByte($string,$numByte);
 
-                $nByte = $this->readByte($string,$numByte);
+                $nByte = MPQFile::readByte($string,$numByte);
 
                 //Recalculating these is excessive.             //ex: For extra = 2
                 $offsetTailMask = (0xFF >> (8-$dsuExtraBits));  //ex: 00000011 
@@ -579,7 +576,7 @@ class SC2Replay {
                 }
 
 								for ($i = 1;$i <= $uTypesCount;$i++) {
-                  $nBytes = unpack("C3",$this->readBytes($string,$numByte,3));
+                  $nBytes = unpack("C3",MPQFile::readBytes($string,$numByte,3));
                   $byte1 = ( $nByte     & $offsetHeadMask) |
                            (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
                   $byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
@@ -593,7 +590,7 @@ class SC2Replay {
                                      ($byte2 << 8)  | 
                                       $byte3) & 0xFFFFFF;
 
-									$nByte = $this->readByte($string,$numByte);
+									$nByte = MPQFile::readByte($string,$numByte);
                   $uType[$i]['count'] = ($nBytes[3] & $offsetHeadMask) |
                                         ($nByte     & $offsetTailMask);
 
@@ -602,7 +599,7 @@ class SC2Replay {
                   }
 
 								}
-								$lByte = $this->readByte($string,$numByte);
+								$lByte = MPQFile::readByte($string,$numByte);
                 
                 $totalUnits = ($nByte & $offsetHeadMask) |
                   ($lByte & $offsetTailMask);
@@ -615,7 +612,7 @@ class SC2Replay {
                 //Populate the unitsDict
                 foreach($uType as $unitType){
                   for($i = 1; $i <= $unitType['count']; $i++){
-                    $nBytes = unpack("C4", $this->readBytes($string, $numByte,4));
+                    $nBytes = unpack("C4", MPQFile::readBytes($string, $numByte,4));
                     $byte1 = ($lByte      & $offsetHeadMask) |
                              (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
                     $byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
@@ -639,18 +636,18 @@ class SC2Replay {
                 }
 
 							} else { // byte-aligned
-								$uTypesCount = $this->readByte($string,$numByte);
+								$uTypesCount = MPQFile::readByte($string,$numByte);
                 if($this->debug){
                   $this->debug(sprintf("Number of New Unit Types %d", $uTypesCount));
                 }
 								for ($i = 1;$i <= $uTypesCount;$i++) {
 									$uType[$i]['id'] = $this->readUnitTypeID($string,$numByte);
-									$uType[$i]['count'] = $this->readByte($string,$numByte);
+									$uType[$i]['count'] = MPQFile::readByte($string,$numByte);
                   if($this->debug){
                     $this->debug(sprintf("  %d x 0x%06X", $uType[$i]['count'], $uType[$i]['id']));
                   }
 								}
-								$totalUnits = $this->readByte($string,$numByte);
+								$totalUnits = MPQFile::readByte($string,$numByte);
                 if($this->debug){
                   $this->debug(sprintf("TOTAL: %d", $totalUnits));
                 }
@@ -658,7 +655,7 @@ class SC2Replay {
                 //Populate the Units Dict
                 foreach($uType as $unitType){
                   for($i = 1; $i <= $unitType['count']; $i++){
-                    $nBytes = unpack("C4", $this->readBytes($string, $numByte, 4));
+                    $nBytes = unpack("C4", MPQFile::readBytes($string, $numByte, 4));
                     $uid = ($nBytes[1] << 8) | $nBytes[2];
 
                     $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
@@ -684,9 +681,9 @@ class SC2Replay {
 						case 0x7D:
 						case 0x8D:
 						case 0x9D:
-							$byte1 = $this->readByte($string,$numByte);
+							$byte1 = MPQFile::readByte($string,$numByte);
 							if ($numByte < $len) {
-								$byte2 = $this->readByte($string,$numByte);
+								$byte2 = MPQFile::readByte($string,$numByte);
 								$numByte--;
 							}
 							$extraBytes = floor($byte1 / 8);
@@ -712,11 +709,11 @@ class SC2Replay {
 							$sender = $playerId;
 							$receiver = ($eventCode & 0xF0) >> 4;
 							// sent minerals
-							$bytes = $this->readBytes($string,$numByte,4);
+							$bytes = MPQFile::readBytes($string,$numByte,4);
 							$mBytes = unpack("C4",$bytes);
 							$mineralValue = ((($mBytes[1] << 20) | ($mBytes[2] << 12) | ($mBytes[3] << 4)) >> 1) + ($mBytes[4] & 0x0F);
 							// sent gas
-							$bytes = $this->readBytes($string,$numByte,4);
+							$bytes = MPQFile::readBytes($string,$numByte,4);
 							$mBytes = unpack("C4",$bytes);
 							$gasValue = ((($mBytes[1] << 20) | ($mBytes[2] << 12) | ($mBytes[3] << 4)) >> 1) + ($mBytes[4] & 0x0F);
 							
@@ -763,16 +760,16 @@ class SC2Replay {
 						case 0xE1:
 						case 0xF1:
 							$numByte += 3;
-							$nByte = $this->readByte($string,$numByte);
+							$nByte = MPQFile::readByte($string,$numByte);
 							switch (($nByte & 0x70)) {
 								case 0x10: // zoom camera up or down
 								case 0x30: // only 0x10 matters, but due to 0x70 mask in comparison, check for this too
 									$numByte++;
-									$nByte = $this->readByte($string,$numByte);
+									$nByte = MPQFile::readByte($string,$numByte);
 								case 0x20:
 									if (($nByte & 0x20) > 0) { // zooming, if comparison is 0 max/min zoom reached
 										$numByte++;
-										$nByte = $this->readByte($string,$numByte);
+										$nByte = MPQFile::readByte($string,$numByte);
 									}
 									if (($nByte & 0x40) == 0) break; // if non-zero (as in 0x40), rotate segment(2 bytes) follows
 								case 0x40: // rotate camera
@@ -818,6 +815,12 @@ class SC2Replay {
 								$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 			}
 		}
+		// in case ability codes change, populate empty 'race' array index to the locale-specific value
+		foreach ($this->getActualPlayers() as $val) {
+			if ($val['race'] == "") 
+				$this->players[$val['id']]['race'] = $val['lrace'];
+		}
+		
 		// update winners based on $playerLeft -array
 		$numLeft = count($playerLeft);
 		$numActual = count($this->getActualPlayers());
@@ -889,16 +892,16 @@ class SC2Replay {
 			$this->players[$playerId]['firstevents'][$abilitycode] = $time;
 		}
 	}
-	private function parseTimeStamp($string, &$numByte) {
-		$one = $this->readByte($string,$numByte);
+	static function parseTimeStamp($string, &$numByte) {
+		$one = MPQFile::readByte($string,$numByte);
 		if (($one & 3) > 0) { // check if value is two bytes or more
-			$two = $this->readByte($string,$numByte);
+			$two = MPQFile::readByte($string,$numByte);
 			$two = ((($one >> 2 ) << 8) | $two);
 			if (($one & 3) >= 2) {
-				$tmp = $this->readByte($string,$numByte);			
+				$tmp = MPQFile::readByte($string,$numByte);			
 				$two = (($two << 8) | $tmp);
 				if (($one & 3) == 3) {
-					$tmp = $this->readByte($string,$numByte);			
+					$tmp = MPQFile::readByte($string,$numByte);			
 					$two = (($two  << 8) | $tmp);
 				}
 			}
