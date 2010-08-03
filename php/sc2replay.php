@@ -24,6 +24,7 @@ class SC2Replay {
 	private $gameSpeed; // game speed, number from 0-4. see $gameSpeeds array above
 	private $teamSize; // team size in the format xvx, eg. 1v1
 	private $gamePublic;
+	private $realm;
 	private $version;
 	private $build;
 	private $events; // contains an array of the events in replay.game.events file
@@ -106,6 +107,7 @@ class SC2Replay {
 	function getVersion() { return $this->version; }
 	function getBuild() { return $this->build; }
 	function getMessages() { return $this->messages; }
+	function getRealm() { return $this->realm; }
 	// getFormattedGameLength returns the time in h hrs, m mins, s secs 
 	function getFormattedGameLength() {
 		return $this->getFormattedSecs($this->gameLength);
@@ -123,7 +125,8 @@ class SC2Replay {
 	function getUnits() { return $this->unitsDict; }
 	function getEvents() { return $this->events; }
 	function getGameLength() { return $this->gameLength; }
-	// parse replay.initData file for player names
+	
+	// parse replay.initData file
 	function parseInitDataFile($string) {
 		$numByte = 0;
 		$numPlayers = MPQFile::readByte($string,$numByte);
@@ -143,6 +146,30 @@ class SC2Replay {
 				$numByte += 5;
 			}
 		}
+		$numByte += 6; // skip 6 bytes, fixed length, unknown what it means
+		$numByte += 4; // skip literal string 'Dflt'
+		$numByte += 15; // skip unknown 15 bytes
+		$accountIdentifierLength = MPQFile::readByte($string,$numByte); // present at least in My Documents\Starcraft 2\Accounts\<value>
+		if ($accountIdentifierLength > 0)
+			$accountIdentifier = MPQFile::readBytes($string,$numByte,$accountIdentifierLength);
+		$numByte += 684; // length seems to be fixed, data seems to vary at least based on number of players
+		while (true) {
+			$str = MPQFile::readBytes($string,$numByte,4);
+			if ($str != 's2ma') { $numByte -= 4; break; }
+			$numByte += 2; // 0x00 0x00
+			$realm = MPQFile::readBytes($string,$numByte,2);
+			$this->realm = $realm;
+			$numByte += 32; //32 bytes probably means some kind of 256-bit hash, probably hash of the required assets(filename?) to run the replay
+		}
+		$numByte += 2; // 01 3a and 21 30 have been observed so far
+		$n1bytes = MPQFile::readByte($string,$numByte);
+		$numByte++; // 20
+		$numByte += $n1bytes;
+		$numByte++; // ca
+		$numByte += 5; // 20 01 1d cc 34
+		$numByte += 16; // fixed-length block, variable data
+		$numByte += 18; // fixed-length block, static data, c2 04 04 11 dc c3 a4 fe 70 83 74 7c 09 8a 85 ca 6b ac 05 32
+		// rest is unknown
 	}
 	// parse replay.details file and add parsed stuff to the object
 	// $string contains the contents of the file
@@ -764,6 +791,7 @@ class SC2Replay {
 							switch (($nByte & 0x70)) {
 								case 0x10: // zoom camera up or down
 								case 0x30: // only 0x10 matters, but due to 0x70 mask in comparison, check for this too
+								case 0x50:
 									$numByte++;
 									$nByte = MPQFile::readByte($string,$numByte);
 								case 0x20:

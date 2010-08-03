@@ -82,12 +82,6 @@ class MPQFile {
 	function setDebugNewline($str) { $this->debugNewline = $str; }
 	function setDebug($bool) { $this->debug = $bool; }
 	
-	// read a byte from string and remove the read byte
-	static function readSByte(&$string) {
-		$t = unpack("C",substr($string,0,1));
-		$string = substr($string,1,strlen($string) -1);
-		return $t[1];	
-	}
 	static function readByte($string, &$numByte) {
 		$tmp = unpack("C",substr($string,$numByte,1));
 		$numByte++;
@@ -351,13 +345,18 @@ class MPQFile {
 			if ($sectorLen == 0) break;
 			$fp = $blockOffset + $sectors[$i];
 			$sectorData = self::readBytes($this->fileData, $fp,$sectorLen);
+			if ($this->debug) $this->debug(sprintf("Got %d bytes of sector data",strlen($sectorData)));
 			if ($flag_compressed && (($flag_singleunit && ($blockSize < $fileSize)) || ($flag_checksums && ($sectorLen <  $this->sectorSize)))) {
-				$compressionType = self::readSByte($sectorData);
+				$numByte = 0;
+				$compressionType = self::readByte($sectorData,$numByte);
+				$sectorData = substr($sectorData,1);
 				switch ($compressionType) {
 					case 0x02:
+						if ($this->debug) $this->debug("Compression type: gzlib");
 						$output .= self::deflate_decompress($sectorData);
 						break;
 					case 0x10:
+						if ($this->debug) $this->debug("Compression type: bzip2");
 						$output .= self::bzip2_decompress($sectorData);
 						break;
 					default:
@@ -447,14 +446,22 @@ class MPQFile {
 			$tmp = ($tmp + 1) % $this->hashTableSize;
 		} while ($tmp != $hashStart);
 		if ($blockIndex == -1) return false;
-		// fill the original file with null bytes
-		$this->fileData = substr_replace($this->fileData, str_repeat(chr(0),$blockSize),$blockOffset,$blockSize);
-		
+
+		// fix block table offsets
+		/*for ($i = 0;$i < $this->blockTableSize;$i++) {
+			if ($i == $blockIndex) continue;
+			if ($this->blocktable[$i*4] > ($blockOffset - $this->headerOffset))
+				$this->blocktable[$i*4] -= $blockSize;
+		}
+		*/
+		// remove the original file contents
+		//$this->fileData = substr_replace($this->fileData,'',$blockOffset,$blockSize);		
+		$this->fileData = substr_replace($this->fileData,str_repeat(chr(0),$blockSize),$blockOffset,$blockSize);		
 		$newFileSize = strlen($filedata);
 		// attempt to use bzip2 compression
 		$compressedData =  chr(16) . bzcompress($filedata);
+		//$compressedData = $filedata;
 		$newBlockOffset = strlen($this->fileData) - $this->headerOffset;
-		
 		if (strlen($compressedData) >= $newFileSize) {
 			$newFlags = 0x81000000;
 			$compressedData = $filedata;
@@ -466,7 +473,7 @@ class MPQFile {
 		}
 		
 		// populate variables
-		$this->fileData .= $compressedData;
+		$this->fileData = substr_replace($compressedData,$this->fileData,0,0);
 		$this->blocktable[$blockIndex] = $newBlockOffset;
 		$this->blocktable[$blockIndex + 1] = $newBlockSize;
 		$this->blocktable[$blockIndex + 2] = $newFileSize;
@@ -480,7 +487,9 @@ class MPQFile {
 		return true;
 	}
 
-	function insertChatLogMessage($newMessage, $player, $time, $string) {
+	function insertChatLogMessage($newMessage, $player, $time) {
+		if ($this->init !== MPQ_PARSE_OK || $this->getFileSize("replay.message.events") == 0) return false;
+		$string = $this->readFile("replay.message.events");
 		$numByte = 0;
 		$time = $time * 16;
 		$fileSize = strlen($string);
@@ -518,12 +527,43 @@ class MPQFile {
 					$opcode = $opcode | 8;
 					$messageSize -= 64;
 				}
-				$messageString = chr(4) . chr($player) . chr($opcode) . chr($messageSize) . $newMessage;
+				$messageString = pack("c4", 4, $player, $opcode, $messageSize). $newMessage;
 				$newData = substr_replace($string, $messageString, $start, 0);
-				return $newData;
+				$this->replaceFile("replay.message.events", $newData);
+				return true;
 			}
 		}
+		return true;
 	}
+	// $obsName is the fake observer name, $string is the contents of replay.initData file
+	function addFakeObserver($obsName) {
+		if ($this->init !== MPQ_PARSE_OK || $this->getFileSize("replay.initData") == 0) return false;
+		$string = $this->readFile("replay.initData");
+		$numByte = 0;
+		$numPlayers = MPQFile::readByte($string,$numByte);
+		for ($i = 1;$i <= $numPlayers;$i++) {
+			$nickLen = MPQFile::readByte($string,$numByte);
+			if ($nickLen > 0) {
+				$numByte += $nickLen;
+				$numByte += 5;
+			} 
+			else {
+				// first empty slot
+				$numByte--;
+				if ($i == $numPlayers)
+					$len = 5;
+				else
+					$len = 6;
+				$obsNameLength = strlen($obsName);
+				$repString = chr($obsNameLength) . $obsName . str_repeat(chr(0),5);
+				$newData = substr_replace($string,$repString,$numByte,$len);
+				$this->replaceFile("replay.initData", $newData);
+				return $i;
+			}
+		}
+		return false;
+	}
+	
 	private function parseKeyVal($string, &$numByte) {
 		$one = unpack("C",substr($string,$numByte,1)); 
 		$one = $one[1];
@@ -551,6 +591,9 @@ class MPQFile {
 	function bzip2_decompress($string) {
 		if (function_exists("bzdecompress")){
 			$tmp = bzdecompress($string);
+			if (is_numeric($tmp) && $this->debug) {
+				$this->debug(sprintf("Bzip2 returned error code: %d",$tmp));
+			}
 			return $tmp;
 		}
 		if ($this->debug) $this->debug("Function 'bzdecompress' does not exist, is bzip2 installed as a module?");
