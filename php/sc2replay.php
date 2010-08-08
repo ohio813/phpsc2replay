@@ -159,17 +159,21 @@ class SC2Replay {
 			$numByte += 2; // 0x00 0x00
 			$realm = MPQFile::readBytes($string,$numByte,2);
 			$this->realm = $realm;
-			$numByte += 32; //32 bytes probably means some kind of 256-bit hash, probably hash of the required assets(filename?) to run the replay
+			$depHash = unpack("H*", MPQFile::readBytes($string,$numByte,32));
+			$depHash = $depHash[1];
+			$str = "Unknown";
+			if ((class_exists("SC2ReplayUtils") || (include 'sc2replayutils.php')) && isset(SC2ReplayUtils::$depHashes[$depHash])) {
+				$str = SC2ReplayUtils::$depHashes[$depHash]['name'];
+				if (SC2ReplayUtils::$depHashes[$depHash]['type'] == SC2_DEPMAP)
+					$this->mapName = $str;
+			}
+			if ($this->debug) $this->debug(sprintf("Got debug hash $depHash (%s)",$str));
 		}
-		$numByte += 2; // 01 3a and 21 30 have been observed so far
-		$n1bytes = MPQFile::readByte($string,$numByte);
-		$numByte++; // 20
-		$numByte += $n1bytes;
-		$numByte++; // ca
-		$numByte += 5; // 20 01 1d cc 34
-		$numByte += 16; // fixed-length block, variable data
-		$numByte += 18; // fixed-length block, static data, c2 04 04 11 dc c3 a4 fe 70 83 74 7c 09 8a 85 ca 6b ac 05 32
-		// rest is unknown
+		// start of variable length data portion
+		$numByte += 2;
+		$numPlayers = MPQFile::readByte($string,$numByte);
+		$numByte += 4;
+		// player-specific data starts
 	}
 	// parse replay.details file and add parsed stuff to the object
 	// $string contains the contents of the file
@@ -182,7 +186,9 @@ class SC2Replay {
 			$p = $this->parsePlayerStruct($string,$numByte,$i);
 		}
 		$mapnameLen = MPQFile::readByte($string,$numByte) / 2;
-		$this->mapName = MPQFile::readBytes($string,$numByte,$mapnameLen);
+		$mapName = MPQFile::readBytes($string,$numByte,$mapnameLen);
+		if ($this->mapName === NULL)
+			$this->mapName = $mapName;
 
 		$numByte += 2; // 04 02
 		$u1Len = MPQFile::readByte($string,$numByte) / 2;

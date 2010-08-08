@@ -24,6 +24,9 @@ define("SC2_TYPEGEN", 8); // anything that doesn't fit into earlier categories
 
 define("SC2_SUBTYPECREATE", 1); // opposite of cancel
 define("SC2_SUBTYPECANCEL", 2); // cancel
+
+define("SC2_DEPMAP", 1); // dependency is a map, name contains map name
+define("SC2_DEPOTHER",2); // dependency is something else
 class SC2ReplayUtils {
 	public static $ABILITYCODES = array(
 		// terran
@@ -93,7 +96,7 @@ class SC2ReplayUtils {
 		0x080F04 => array('desc' => 'builds a Thor', 'name' => 'Thor', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 300, 'gas' => 200, 'sup' => 6),
 		0x080F05 => array('desc' => 'builds a Hellion', 'name' => 'Hellion', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 100, 'gas' => 0, 'sup' => 2),
 		0x090000 => array('desc' => 'builds a Medivac', 'name' => 'Medivac', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 100, 'gas' => 100, 'sup' => 2),
-		0x090001 => array('desc' => 'builds a Banshee', 'name' => 'Raven', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 150, 'gas' => 100, 'sup' => 3),
+		0x090001 => array('desc' => 'builds a Banshee', 'name' => 'Banshee', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 150, 'gas' => 100, 'sup' => 3),
 		0x090002 => array('desc' => 'builds a Raven', 'name' => 'Raven', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 100, 'gas' => 200, 'sup' => 2),
 		0x090003 => array('desc' => 'builds a Battlecruiser', 'name' => 'Battlecruiser', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 400, 'gas' => 300, 'sup' => 6),
 		0x090004 => array('desc' => 'builds a Viking', 'name' => 'Viking', 'type' => SC2_TYPEUNIT, 'subtype' => SC2_SUBTYPECREATE, 'min' => 150, 'gas' => 75, 'sup' => 2),
@@ -480,6 +483,83 @@ class SC2ReplayUtils {
 		0x004601 => array('name' => "Tech Lab on Starport", 'type' => SC2_TYPEADDON, 'upgrades_to' => array()),
 		0x004C01 => array('name' => "Lowered Supply Depot", 'type' => SC2_TYPEBUILDING, 'upgrades_to' => array(0x002D01)),
 		0x004101 => array('name' => "Flying Command Center", 'type' => SC2_TYPEBUILDING, 'upgrades_to' => array(0x002C01)),
+	);
+	
+	public static $depHashes = array(
+		// other known assets
+		"6de41503baccd05656360b6f027db88169fa1989bb6357b1b215a2547939f5fb" => array("name" => "Core.SC2Mod", "type" => SC2_DEPOTHER),
+		"421c8aa0f3619b652d23a2735dfee812ab644228235e7a797edecfe8b67da30e" => array("name" => "Liberty.SC2Mod", "type" => SC2_DEPOTHER),
+		"5c673e6cd2f1bf6e068fa59e2f9421f5debb91cb516aca3237d3b05fe7c7e9fa" => array("name" => "LibertyMulti.SC2Mod", "type" => SC2_DEPOTHER),
+		"7f41411aa597f4b46440d42a563348bf53822d2a68112f0104f9b891f6f05ae1" => array("name" => "Teams02.SC2Mod", "type" => SC2_DEPOTHER),
+		"658e520aa5deb48866dc2b21b023daa9a291be4cf22fd9d785ca67f178132a87" => array("name" => "Teams04.SC2Mod", "type" => SC2_DEPOTHER),
+		
+		// maps
+		"d0482679c925f8c5dd6228f2411c995e0fd2768015eb3dbc777584922731d349" => array("name" => "Abyss", "type" => SC2_DEPMAP),
+		"ee129ab013dd3fe080fc437d19b380b868ab3e302c35ae526ea6f15af6f6b078" => array("name" => "Agria Valley", "type" => SC2_DEPMAP),
+		"4fa2764424a0d4b06c3c3f160df5ce17c382cec712d1a0b9aec104ca2236eff3" => array("name" => "Arakan Citadel", "type" => SC2_DEPMAP),
+		"c22955a9e3b97f3511d1d3950859ce9d2855a338fb5ab931eb977c7188255bd6" => array("name" => "Arid Wastes", "type" => SC2_DEPMAP),
+		"7abaae864c20201d74f657a6f7406106f113c8e6b52b078ecafdaaf290a761b6" => array("name" => "Arid Wastes", "type" => SC2_DEPMAP),
+		"e33a5890ad2eedeaa56ce17356d1e618ad4ff99f50e76a34e7772e087802e8ea" => array("name" => "Blistering Sands", "type" => SC2_DEPMAP),
+		"7dbf6b641bc5fce7abdaa352c66a9ba4e942d5bdf48a67e33cbff0ff32b3d47c" => array("name" => "Burial Grounds", "type" => SC2_DEPMAP),
+		"60d74c966e691599876ea18b55db99b36f2b62b85c05ff4e69551bb10bc0fd0b" => array("name" => "Colony 426", "type" => SC2_DEPMAP),
+		"824d92a85f50bc4924966d0c0ad8733ae581020cc0409c7ec42c76bc16fcaa26" => array("name" => "Crossfire", "type" => SC2_DEPMAP),
+		"b68951b568e7255f442d7285a178870494b9b3e6023b831770a7558400b4cf5e" => array("name" => "Debris Field", "type" => SC2_DEPMAP),
+		"5dc1d6dde914c02b8d64adf8f51cb1f811be7e89db53c6c0ded8c6e057202bad" => array("name" => "Delta Quadrant", "type" => SC2_DEPMAP),
+		"f34aa7113bb3c1a7892bfa0dd60de7f34e619434ebefe45412164277abed5bf3" => array("name" => "Desert Oasis", "type" => SC2_DEPMAP),
+		"2b3a003426de842f63fb97f2f68e6b71a6177d98ef9a945aba877f6cfb2c0a89" => array("name" => "Dig Site", "type" => SC2_DEPMAP),
+		"8fe944d0879bf22c6fc7a6b3f36ea946e43d6636448d6a08b7734d6822bc425d" => array("name" => "Dirt Side", "type" => SC2_DEPMAP),
+		"505b560e0d2739a919384766e2f331fd42483a347c92111549c442e7e1cd738d" => array("name" => "Discord IV", "type" => SC2_DEPMAP),
+		"58fca7d89dc576b889ae1f7ab194f425545fbe8c9dac2c3d739fcb1cd2c2f324" => array("name" => "Elysium", "type" => SC2_DEPMAP),
+		"da2512882b815f774b0a7469e0d52945c486599406271e10d8cb7193e77c64db" => array("name" => "Extinction", "type" => SC2_DEPMAP),
+		"c845f8e0b2084352047ed0ea2d8701321e3fa908b4d67b5002d04656b45b4a45" => array("name" => "Forbidden Planet", "type" => SC2_DEPMAP),
+		"36422e713b8b825a7aa8c4f27301145400bacf76fd5ddd5caedde411c935ea0d" => array("name" => "Frontier", "type" => SC2_DEPMAP),
+		"4c26d855a635fae81efa1bbebc39f52a3a0703ac966698288fe526cdaad7f35d" => array("name" => "High Ground", "type" => SC2_DEPMAP),
+		"1d961d930214c7de51b903db4c2e6796aee154531fe344686ce54803107a168c" => array("name" => "High Orbit", "type" => SC2_DEPMAP),
+		"395fb54902a9ae84698940dbf414a91520b3c27322515ff3e7e600b548ac81b7" => array("name" => "Incineration Zone", "type" => SC2_DEPMAP),
+		"d3c721754d1534500142950e3943a0bd631f54df56593096c7740389f01fa816" => array("name" => "Jungle Basin", "type" => SC2_DEPMAP),
+		"a49177ada7f0f1848761319edd889f31a925b292a37b5d2622628a5dfa267f43" => array("name" => "Junk Yard", "type" => SC2_DEPMAP),
+		"c7667c45f7cc6e3c2c453feee632b34dae9670f4a269bd373872f70cabd274eb" => array("name" => "Kulas Ravine", "type" => SC2_DEPMAP),
+		"99e71fcbffff967b8f008d87e297c78ab913d0d129ca354ec8174b57f398ce68" => array("name" => "Kulas Ravine", "type" => SC2_DEPMAP),
+		"5e43b6129af26498d8c84a230936a2eb350e6f0ba54791cd41d5a22b6f728556" => array("name" => "Lava Flow", "type" => SC2_DEPMAP),
+		"cfa196a601daaadd3d29a16cd1b2cf0a2917ad8d959ca9813ca12ce123782760" => array("name" => "Lost Temple", "type" => SC2_DEPMAP),
+		"711dd8749cd5f04a06d1cf2f5f7b045febf9a655c382d09424620752594657d1" => array("name" => "Megaton", "type" => SC2_DEPMAP),
+		"71d1c6773ad36035333cad61ceac0789828e3b49690fad95efb1475ca3b6f1d8" => array("name" => "Metalopolis", "type" => SC2_DEPMAP),
+		"5f1c8e57d5b1f33dd7a116fad1157848e890ee07de12181488fb77506b96279d" => array("name" => "Monlyth Ridge", "type" => SC2_DEPMAP),
+		"ce28ed769b1e73267c94256fafec4c5569d346e325d06fdcb6d8339d4d3c8d5a" => array("name" => "Monsoon", "type" => SC2_DEPMAP),
+		"3e600ff2917bae8e5734e56808958ca59978f3868c06272761a5194b0c58ad32" => array("name" => "New Antioch", "type" => SC2_DEPMAP),
+		"5c19269e878b4b9fbb37131eea80c3b3c828cc71f48c5d87b14e05585104a6d6" => array("name" => "Nightmare", "type" => SC2_DEPMAP),
+		"638cbab4b1d5db1025c6edd07d9316f39731103fffcefaf6f0bd310cd8cc8002" => array("name" => "Novice Blistering Sands", "type" => SC2_DEPMAP),
+		"f57d57fff5c83846f4c29d54afe14b32c29914f384f31eae76cba67c772aac6c" => array("name" => "Novice Desert Oasis", "type" => SC2_DEPMAP),
+		"1fc47bb57ac40ba7187ef8df88574208be0f5ab33864beba5a42ddb78ecd6482" => array("name" => "Novice Discord IV", "type" => SC2_DEPMAP),
+		"2d6f32bd6489cafc593d932d71d8975c3f1d5bf33618f66d39a3ffa5138965d1" => array("name" => "Novice Kulas Ravine", "type" => SC2_DEPMAP),
+		"bb1b7483a7a8424f9e3463198a2e9830a8bae4cb05fc2be5eb8f7398a3f7feb9" => array("name" => "Novice Metalopolis", "type" => SC2_DEPMAP),
+		"614bb763e37ee9e422d4747c4e1979a32a14e7013db02b386d5ef9d5c48108e5" => array("name" => "Novice Monlyth Ridge", "type" => SC2_DEPMAP),
+		"0c09c2ab0f2243e3b0cef68a285e6ab83845f51e51d9cefb8acba2030f69fd0b" => array("name" => "Novice Steppes of War", "type" => SC2_DEPMAP),
+		"9a037ed0bb5bb0a5cd5f62961d89f319a6cef92fa0765645f1171cafca6a2012" => array("name" => "Novice Terminus", "type" => SC2_DEPMAP),
+		"50f1dec30dbea330227e19d986f60b7cfeedd96bb12766ca473db4cf77a1f044" => array("name" => "Novice Twilight Fortress", "type" => SC2_DEPMAP),
+		"3ab8aa07be82e09220e5bf6c0bb433907d84f5c31c8a18d97a776cd70681a291" => array("name" => "Outpost", "type" => SC2_DEPMAP),
+		"c685252a915588b6143e77450995b9ccf91f1260030c04d823a9d8deac9a5e7a" => array("name" => "Primeval", "type" => SC2_DEPMAP),
+		"0d5ca2cfdfdec15c9343d2a41f5fb6246b6dbcc4b738924c361747af1d34d2ce" => array("name" => "Quicksand", "type" => SC2_DEPMAP),
+		"ca6d7bf4f761ad3be1ce2548136ff4485e711bb166fc867ad6570026aa09baec" => array("name" => "Red Stone Gulch", "type" => SC2_DEPMAP),
+		"32e63267ec70860333cce4b11b2656908668bb8821e5faa2f7d429b341133632" => array("name" => "Sacred Ground", "type" => SC2_DEPMAP),
+		"509a19f1cfc38ed0c34a71ec472b1c27aaa55d4fe02a35bbbc3c1e41ef05b006" => array("name" => "Sand Canyon", "type" => SC2_DEPMAP),
+		"f88dfc7b28d920295984c0190a4eb4d33c16ef78acf82aaa70deedcc2e751de1" => array("name" => "Scorched Haven", "type" => SC2_DEPMAP),
+		"3e066c551a8692fef70f653a09d68959092ea2a3c8cc87e83b34602964c3b97d" => array("name" => "Scrap Station", "type" => SC2_DEPMAP),
+		"c890239f06d85410e2709991c854965529b811ec54638d8103f3ef3d93d073e1" => array("name" => "Shakuras Plateau", "type" => SC2_DEPMAP),
+		"0ab117440ef3ddc71dc180c73a860c23bf43e118e22c54114bc29b3bd0c038cc" => array("name" => "Steppes of War", "type" => SC2_DEPMAP),
+		"916959be930e8a42e31fe085a6c47aed2cc0f88f261d82b5fa511dde7d877f3b" => array("name" => "Steppes of War", "type" => SC2_DEPMAP),
+		"8a5123168202e152a93e46446151ceba237d47310b766273836f279f71e0f133" => array("name" => "Tarsonis Assault", "type" => SC2_DEPMAP),
+		"b6a71bd3eff8399dd6e374d3639b8950ea74763cc15b90fff197a0cad5b2a849" => array("name" => "Tectonic Rift", "type" => SC2_DEPMAP),
+		"f9039f994680d63928a549ec2082fd8429b0aa454c6f3346b2330c7dae47dee0" => array("name" => "Tempest", "type" => SC2_DEPMAP),
+		"a286bef07928f4c9c12d9ff96c7e32a7580f1691cd84b3d5db3bb9487621860d" => array("name" => "Terminus", "type" => SC2_DEPMAP),
+		"d54fab65d8ba0a8c867e48cfab365d381b7f22e5db4f0853b73432227b6ba271" => array("name" => "The Bio Lab", "type" => SC2_DEPMAP),
+		"f720500a2306f36330980d951ec016eaec6c33f0e7d7816323f3e1b111bde0da" => array("name" => "Toxic Slums", "type" => SC2_DEPMAP),
+		"f99ea81406e87393885e793ec89aa3078154792429db49f948c7f52bfd636bd8" => array("name" => "Twilight Fortress", "type" => SC2_DEPMAP),
+		"47604d075cbc4ff7eb8a716192e47bc4ece549ec1d280d79de15a06c81357cc0" => array("name" => "Typhon", "type" => SC2_DEPMAP),
+		"9c512517d50954090136bd220bf7e093a39b4d2dd0c46d9e5509e03cd462f93e" => array("name" => "Ulaan Deeps", "type" => SC2_DEPMAP),
+		"badc898529ca88e0ba055d4563e8739304bc9811a6841fb313456a3b164cfea9" => array("name" => "War Zone", "type" => SC2_DEPMAP),
+		"666ebf589538e74ccd6f2e21dba2a80c03eff5c611e6d56ef19302c071aaa932" => array("name" => "Worldship", "type" => SC2_DEPMAP),
+		"c89809141f63d58d05866ac8dad481a68cce8276264135d6a59b2c12abbea354" => array("name" => "Xel'Naga Caverns", "type" => SC2_DEPMAP)
 	);
 }
 

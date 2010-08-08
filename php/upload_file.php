@@ -173,8 +173,12 @@ if (isset($_FILES['userfile'])) {
 			
 			if (isset($_POST['test']) && $_POST['test'] == 1) {
 				if (class_exists("SC2Replay") || (include 'sc2replay.php')) {
-					$bool = $a->insertChatLogMessage("testing testing", 1, 1);
+					
+					$bool = $a->insertChatLogMessage("testing testing", "testguy", 1);
 					$bool = $a->insertChatLogMessage("testing 2", 1, 25);
+
+					$a->saveAs("testfile.SC2Replay", true);
+					$a = new MPQFile("testfile.SC2Replay", true, 2);
 				}
 			}
 			if ($init == MPQ_ERR_NOTMPQFILE)

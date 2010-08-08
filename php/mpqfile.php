@@ -47,6 +47,7 @@ class MPQFile {
 	public static $cryptTable;
 	private $fileType;
 	private $fileData;
+	private $archiveSize;
 	
 	function __construct($filename, $autoparse = true, $debug = 0) {
 		$this->filename = $filename;
@@ -182,6 +183,7 @@ class MPQFile {
 				if ($this->debug) $this->debug(sprintf("Found header at %08X",$fp));
 				$headerSize = self::readUInt32($this->fileData, $fp);
 				$archiveSize = self::readUInt32($this->fileData, $fp);
+				$this->archiveSize = $archiveSize;
 				$formatVersion = self::readUInt16($this->fileData, $fp);
 				$sectorSizeShift = self::readByte($this->fileData, $fp);
 				$sectorSize = 512 * pow(2,$sectorSizeShift);
@@ -191,6 +193,7 @@ class MPQFile {
 				$this->hashTableOffset = $hashTableOffset;
 				$blockTableOffset = self::readUInt32($this->fileData, $fp) + $headerOffset; 
 				$this->blockTableOffset = $blockTableOffset;
+				if ($this->debug) $this->debug(sprintf("Hash table offset: %08X, Block table offset: %08X",$hashTableOffset, $blockTableOffset));
 				$hashTableEntries = self::readUInt32($this->fileData, $fp);
 				$this->hashTableSize = $hashTableEntries;
 				$blockTableEntries = self::readUInt32($this->fileData, $fp);
@@ -448,32 +451,45 @@ class MPQFile {
 		if ($blockIndex == -1) return false;
 
 		// fix block table offsets
-		/*for ($i = 0;$i < $this->blockTableSize;$i++) {
+		for ($i = 0;$i < $this->blockTableSize;$i++) {
 			if ($i == $blockIndex) continue;
 			if ($this->blocktable[$i*4] > ($blockOffset - $this->headerOffset))
 				$this->blocktable[$i*4] -= $blockSize;
 		}
-		*/
+		if ($this->blockTableOffset > $blockOffset) {
+			$this->blockTableOffset = $this->blockTableOffset - $this->headerOffset - $blockSize;
+			$this->fileData = substr_replace($this->fileData, pack("V",$this->blockTableOffset),$this->headerOffset + 20,4);
+			$this->blockTableOffset += $this->headerOffset;
+		}
+		if ($this->hashTableOffset > $blockOffset) {
+			$this->hashTableOffset = $this->hashTableOffset - $this->headerOffset - $blockSize;
+			$this->fileData = substr_replace($this->fileData, pack("V",$this->hashTableOffset),$this->headerOffset + 16,4);
+			$this->hashTableOffset += $this->headerOffset;
+		}
 		// remove the original file contents
-		//$this->fileData = substr_replace($this->fileData,'',$blockOffset,$blockSize);		
-		$this->fileData = substr_replace($this->fileData,str_repeat(chr(0),$blockSize),$blockOffset,$blockSize);		
+		$this->fileData = substr_replace($this->fileData,'',$blockOffset,$blockSize);		
+		//$this->fileData = substr_replace($this->fileData,str_repeat(chr(0),$blockSize),$blockOffset,$blockSize);		
 		$newFileSize = strlen($filedata);
 		// attempt to use bzip2 compression
 		$compressedData =  chr(16) . bzcompress($filedata);
 		//$compressedData = $filedata;
 		$newBlockOffset = strlen($this->fileData) - $this->headerOffset;
 		if (strlen($compressedData) >= $newFileSize) {
-			$newFlags = 0x81000000;
+			$newFlags = (0x40000000 << 1) | 0x01000000;
+			//$newFlags = 0x81000000;
 			$compressedData = $filedata;
 			$newBlockSize = $newFileSize;
 		}
 		else {
-			$newFlags = 0x81000200;
+			$newFlags = (0x40000000 << 1) | 0x01000200;
+			//$newFlags = 0x81000200;
 			$newBlockSize = strlen($compressedData);
 		}
-		
+		// fix archive size
+		$this->fileData = substr_replace($this->fileData, pack("V",$this->archiveSize + $newBlockSize), $this->headerOffset + 8, 4); 
 		// populate variables
-		$this->fileData = substr_replace($compressedData,$this->fileData,0,0);
+		$this->fileData .= $compressedData;
+		$this->printTable($this->blocktable);
 		$this->blocktable[$blockIndex] = $newBlockOffset;
 		$this->blocktable[$blockIndex + 1] = $newBlockSize;
 		$this->blocktable[$blockIndex + 2] = $newFileSize;
@@ -481,26 +497,42 @@ class MPQFile {
 		// encrypt the block table
 		$resultBlockTable = self::encryptStuff($this->blocktable,self::hashStuff("(block table)", MPQ_HASH_FILE_KEY));		
 		// replace the block table in fileData variable
-		for ($i = 0;$i < $this->blockTableSize;$i++) {
+		for ($i = 0;$i < $this->blockTableSize * 4;$i++) {
+			//$this->fileData = substr($this->fileData, 0, $this->blockTableOffset + $i * 4) . pack("V",$resultBlockTable[$i]) . substr($this->fileData, $this->blockTableOffset + $i * 4 + 4);
+			//$this->fileData = substr_replace($this->fileData, pack("v",$resultBlockTable[$i] & 0xFFFF), $this->blockTableOffset + $i * 4, 2); 
+			//$this->fileData = substr_replace($this->fileData, pack("v",($resultBlockTable[$i] >> 16) & 0xFFFF), $this->blockTableOffset + $i * 4 + 2, 2); 
 			$this->fileData = substr_replace($this->fileData, pack("V",$resultBlockTable[$i]), $this->blockTableOffset + $i * 4, 4); 
 		}
 		return true;
 	}
-
+	// saves the mpq data as a file.
+	function saveAs($filename, $overwrite = false) {
+		if (file_exists($filename) && !$overwrite) return false;
+		$fp = fopen($filename, "wb");
+		if (!$fp) return false;
+		$result = fwrite($fp,$this->fileData);
+		if (!$result) return false;
+		fclose($fp);
+		return true;
+	}
+	
 	function insertChatLogMessage($newMessage, $player, $time) {
 		if ($this->init !== MPQ_PARSE_OK || $this->getFileSize("replay.message.events") == 0) return false;
+		if (!is_numeric($player)) return false; //$playerId = $this->addFakeObserver($player);
+		else $playerId = $player;
+		if ($playerId <= 0) return false;
 		$string = $this->readFile("replay.message.events");
 		$numByte = 0;
 		$time = $time * 16;
 		$fileSize = strlen($string);
 		$messageSize = strlen($newMessage);
-		if ($messageSize >= 256) return;
+		if ($messageSize >= 256) return false;
 		$totTime = 0;
 		while ($numByte < $fileSize) {
 			$pastHeaders = true;
 			$start = $numByte;
 			$timestamp = SC2Replay::parseTimeStamp($string,$numByte);
-			$playerId = self::readByte($string,$numByte);
+			$pid = self::readByte($string,$numByte);
 			$opcode = self::readByte($string,$numByte);
 			$totTime += $timestamp;
 			if ($opcode == 0x80) {
@@ -527,41 +559,127 @@ class MPQFile {
 					$opcode = $opcode | 8;
 					$messageSize -= 64;
 				}
-				$messageString = pack("c4", 4, $player, $opcode, $messageSize). $newMessage;
-				$newData = substr_replace($string, $messageString, $start, 0);
-				$this->replaceFile("replay.message.events", $newData);
-				return true;
+				break;
 			}
 		}
+		$messageString = pack("c4", 4, $playerId, $opcode, $messageSize). $newMessage;
+		$newData = substr_replace($string, $messageString, $start, 0);
+		$this->replaceFile("replay.message.events", $newData);
 		return true;
 	}
 	// $obsName is the fake observer name, $string is the contents of replay.initData file
+	// DOES NOT WORK CURRENTLY!
 	function addFakeObserver($obsName) {
+		return false; // this function does not work currently so DO NOT USE!
 		if ($this->init !== MPQ_PARSE_OK || $this->getFileSize("replay.initData") == 0) return false;
 		$string = $this->readFile("replay.initData");
 		$numByte = 0;
 		$numPlayers = MPQFile::readByte($string,$numByte);
+		$playerAdded = false;
+		$playerId = 0;
 		for ($i = 1;$i <= $numPlayers;$i++) {
 			$nickLen = MPQFile::readByte($string,$numByte);
 			if ($nickLen > 0) {
 				$numByte += $nickLen;
 				$numByte += 5;
 			} 
-			else {
+			elseif (!$playerAdded) {
 				// first empty slot
+				$playerAdded = true;
 				$numByte--;
 				if ($i == $numPlayers)
 					$len = 5;
 				else
 					$len = 6;
+				// add the player to the initdata file
 				$obsNameLength = strlen($obsName);
 				$repString = chr($obsNameLength) . $obsName . str_repeat(chr(0),5);
-				$newData = substr_replace($string,$repString,$numByte,$len);
-				$this->replaceFile("replay.initData", $newData);
-				return $i;
+				$newData = substr($string,0,$numByte) . $repString . substr($string,$numByte - $len + strlen($repString));
+				$numByte += strlen($repString);
+				//$this->replaceFile("replay.initData", $newData);
+
+				$playerId = $i;
+				$string = $newData;
+				// skip the next null part because it is 1 byte shorter than normal
+				if ($i < $numPlayers) {
+					$i++;
+					$numByte += 4;
+				}
+			}
+			else {
+				$numByte += 5;
 			}
 		}
-		return false;
+		if ($this->debug) $this->debug(sprintf("Got past first player loop, counter = $i, numbyte: %04X",$numByte));
+		if ($playerId == 0)
+			return false;
+		$numByte += 25;
+		$accountIdentifierLength = MPQFile::readByte($string,$numByte);
+		if ($accountIdentifierLength > 0)
+			$accountIdentifier = MPQFile::readBytes($string,$numByte,$accountIdentifierLength);
+		$numByte += 684; // length seems to be fixed, data seems to vary at least based on number of players
+		while (true) {
+			$str = MPQFile::readBytes($string,$numByte,4);
+			if ($str != 's2ma') { $numByte -= 4; break; }
+			$numByte += 2; // 0x00 0x00
+			$realm = MPQFile::readBytes($string,$numByte,2);
+			$this->realm = $realm;
+			$numByte += 32;
+		}
+		// start of variable length data portion
+		$numByte += 2;
+		$numPlayers = MPQFile::readByte($string,$numByte);
+		// need to increment numplayers by 1
+		$string = substr_replace($string, pack("c",$numPlayers + 1), $numByte - 1, 1);
+		$numByte += 4;
+		for ($i = 1;$i <= $numPlayers;$i++) {
+			$firstByte = MPQFile::readByte($string,$numByte);
+			$secondByte = MPQFile::readByte($string,$numByte);
+			if ($this->debug) $this->debug(sprintf("Function addFakeObserver: numplayer: %d, first byte: %02X, second byte: %02X",$i,$firstByte,$secondByte));
+			switch ($firstByte) {
+				case 0xca:
+					switch ($secondByte) {
+						case 0x20: // player
+							$numByte += 20;
+							break;
+						case 0x28: // player
+							$numByte += 24;
+							break;
+						case 0x04:
+						case 0x02: // spectator
+						case 0x00: // computer
+							$numByte += 4;
+							break;
+					}
+					break;
+				case 0xc2:
+					switch ($secondByte) {
+						case 0x04:
+							$tmp = MPQFile::readByte($string,$numByte);
+							if ($tmp == 0x05)
+								$numByte += 4;
+							$numByte += 20;
+							break;
+						case 0x24:
+						case 0x44:
+							$numByte += 5;
+							break;
+					}
+					break;
+				default:
+					if ($this->debug) $this->debug(sprintf("Function addFakeObserver: Unknown byte at byte offset %08X, got %02X",$numByte,$firstByte));
+					return false;
+			}
+		}
+		
+		// insert join game event and initial camera event for the newly created player
+		$string = $this->readFile("replay.game.events");
+		$string = substr_replace($string, pack("c3",0,$playerId,0x0B),0,0);
+		$tmpByte = $i * 3 + 5;
+		$camerastring = pack("c2", 0, (0x60 | $playerId)) .MPQFile::readBytes($string,$tmpByte,11);
+		$string = substr_replace($string, $camerastring,$tmpByte,0);
+		$this->replaceFile("replay.game.events", $string);
+		return $playerId;
 	}
 	
 	private function parseKeyVal($string, &$numByte) {
@@ -642,10 +760,9 @@ class MPQFile {
 			$seed = uPlus($seed,self::$cryptTable[0x400 + ($key & 0xFF)]);
 			$ch = $data[$i] ^ (uPlus($key,$seed));
 
-			$data[$i] = $ch & ((0xFFFF << 16) | 0xFFFF);
-
 			$key = (uPlus(((~$key) << 0x15), 0x11111111)) | (rShift($key,0x0B));
 			$seed = uPlus(uPlus(uPlus($ch,$seed),($seed << 5)),3);
+			$data[$i] = $ch & ((0xFFFF << 16) | 0xFFFF);
 		}
 		return $data;
 	}
@@ -658,7 +775,7 @@ class MPQFile {
 
 			$key = (uPlus(((~$key) << 0x15), 0x11111111)) | (rShift($key,0x0B));
 			$seed = uPlus(uPlus(uPlus($data[$i],$seed),($seed << 5)),3);
-			$data[$i] = $ch & ((0xFFFF << 16) | 0xFFFF);
+			$data[$i] = $ch & ((0xFFFF << 16) | 0xFFFF);			
 		}
 		return $data;
 	}
