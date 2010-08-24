@@ -57,14 +57,6 @@ class SC2Replay {
 		$this->version = $mpqfile->getVersion();
 		$this->build = $mpqfile->getBuild();
 		
-		$file = $mpqfile->readFile("replay.initData");
-		$start = microtime_float();
-		if ($file !== false) {
-			$this->parseInitDataFile($file);
-		}
-		else if ($this->debug) $this->debug("Error reading the replay.initData file");
-		if ($this->debug) $this->debug(sprintf("Parsed replay.initData file in %d ms.",(microtime_float() - $start)*1000));
-		
 		// then parse replay.details file
 		$file = $mpqfile->readFile("replay.details");
 		$start = microtime_float();
@@ -73,6 +65,14 @@ class SC2Replay {
 		}
 		else if ($this->debug) $this->debug("Error reading the replay.details file");
 		if ($this->debug) $this->debug(sprintf("Parsed replay.details file in %d ms.",(microtime_float() - $start)*1000));
+
+		$file = $mpqfile->readFile("replay.initData");
+		$start = microtime_float();
+		if ($file !== false) {
+			$this->parseInitDataFile($file);
+		}
+		else if ($this->debug) $this->debug("Error reading the replay.initData file");
+		if ($this->debug) $this->debug(sprintf("Parsed replay.initData file in %d ms.",(microtime_float() - $start)*1000));
 
 		$file = $mpqfile->readFile("replay.attributes.events");
 		$start = microtime_float();		
@@ -94,6 +94,7 @@ class SC2Replay {
 		if ($file !== false) $this->parseChatLog($file);
 		else if ($this->debug) $this->debug("Error reading the replay.message.events file");
 		if ($this->debug) $this->debug(sprintf("Parsed replay.message.events file in %d ms.",(microtime_float() - $start)*1000));		
+		
 	}
 	private function debug($message) { echo $message.($this->debugNewline); }
 	function setDebugNewline($str) { $this->debugNewline = $str; }
@@ -131,11 +132,15 @@ class SC2Replay {
 		$numByte = 0;
 		$numPlayers = MPQFile::readByte($string,$numByte);
 		$nullName = false;
+		$playerNames = array();
+		foreach ($this->players as $player)
+			$playerNames[] = $player['name'];
+		$tmpArray = array();
 		for ($i = 1;$i <= $numPlayers;$i++) {
 			$nickLen = MPQFile::readByte($string,$numByte);
 			if ($nickLen > 0) {
 				$name = MPQFile::readBytes($string,$numByte,$nickLen);
-				$this->players[$i] = array( "name" => $name, "isObs" => TRUE, "id" => $i, "isComp" => FALSE, "team" => 0 ); // set initial values
+				$tmpArray[$i] = array( "name" => $name, "isObs" => TRUE, "id" => $i, "isComp" => FALSE, "team" => 0 ); // set initial values
 				$numByte += 5;
 			} 
 			else {
@@ -172,6 +177,14 @@ class SC2Replay {
 		// start of variable length data portion
 		$numByte += 2;
 		$numPlayers = MPQFile::readByte($string,$numByte);
+		$i = $numPlayers;
+		foreach ($tmpArray as $player) {
+			if (in_array($player['name'],$playerNames)) continue;
+			$player['id'] = $i;
+			$this->players[$i] = $player;
+			$i--;
+		}
+		
 		$numByte += 4;
 		// player-specific data starts
 	}
@@ -187,8 +200,7 @@ class SC2Replay {
 		}
 		$mapnameLen = MPQFile::readByte($string,$numByte) / 2;
 		$mapName = MPQFile::readBytes($string,$numByte,$mapnameLen);
-		if ($this->mapName === NULL)
-			$this->mapName = $mapName;
+		$this->mapName = $mapName;
 
 		$numByte += 2; // 04 02
 		$u1Len = MPQFile::readByte($string,$numByte) / 2;
@@ -256,6 +268,7 @@ class SC2Replay {
 		$this->players[$id]["name"] = $sName; // player name
 		$this->players[$id]["lrace"] = $race; // locale-specific player race
 		$this->players[$id]["race"] = ""; // player race in english, populated by checking which workers they build
+		$this->players[$id]["id"] = $id;
 		$this->players[$id]["party"] = $party;
 		$this->players[$id]["team"] = 0;
 		$this->players[$id]["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
@@ -266,7 +279,7 @@ class SC2Replay {
 		$this->players[$id]["ptype"] = "";
 		$this->players[$id]["handicap"] = 0;
 		$this->players[$id]["isComp"] = false;
-		$this->players[$id]["uid"] = $keys[8];
+		$this->players[$id]["uid"] = $keys[8] / 2;
 		$this->players[$id]["isObs"] = false; // all players present in replay.details file are not observers
 		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $this->players[$id]["color"]));
 		return;
