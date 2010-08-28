@@ -7,7 +7,6 @@
 #include <iosfwd>
 #include <fstream>
 #include <boost/iostreams/stream.hpp>
-#include <boost/iostreams/code_converter.hpp>
 #include <boost/iostreams/device/array.hpp>
 
 namespace sc2replay
