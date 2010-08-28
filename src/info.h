@@ -1,15 +1,8 @@
 #ifndef SC2REPLAY_INFO_H
 #define SC2REPLAY_INFO_H
 
-#define BOOST_SPIRIT_DEBUG
-
 #include "types.h"
 #include "player.h"
-
-#include <boost/spirit/include/qi.hpp>
-#include <boost/fusion/adapted/std_pair.hpp>
-#include <boost/fusion/include/std_pair.hpp>
-
 
 #include <iosfwd>
 #include <string>
@@ -42,9 +35,6 @@ namespace sc2replay
         };
   
     public:
-        typedef std::vector<Player>   Players;
-  
-    public:
         Info();
         ~Info();
   
@@ -68,31 +58,6 @@ namespace sc2replay
         Players players_;
         std::string mapFilename_;
         std::string mapName_;
-
-
-        typedef boost::spirit::qi::rule<const uint8_t*, 
-                                        boost::spirit::qi::locals<int>, 
-                                        std::string() > string_rule_type;
-
-        typedef boost::spirit::qi::rule<const uint8_t*,
-                                        int()> value_rule_type;
-
-        typedef boost::spirit::qi::rule<const uint8_t*, 
-                                        std::pair<sc2replay::uint16_t, 
-                                                  int>()> kv_rule_type;
-
-        typedef boost::spirit::qi::rule<const uint8_t*, 
-                                        sc2replay::Player()> player_rule_type;
-
-        typedef boost::spirit::qi::rule<const uint8_t*,
-                                        boost::spirit::qi::locals<int>,
-                                        Players()> players_rule_type;
-
-        string_rule_type string;
-        value_rule_type value;
-        kv_rule_type kv;
-        player_rule_type player;
-        players_rule_type players;
 
     };
 

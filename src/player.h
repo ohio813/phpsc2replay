@@ -49,18 +49,19 @@ namespace sc2replay
         int getAttribute(K key) const;
     };
 
-template <typename K>
-int Player::getAttribute(K key) const
-{
-    for (attributes_type::const_iterator it = attributes_.begin();
-         it != attributes_.end(); ++it)
+    template <typename K>
+    int Player::getAttribute(K key) const
     {
-        if (it->first == static_cast<uint8_t>(key))
-            return it->second/2;
+        for (attributes_type::const_iterator it = attributes_.begin();
+             it != attributes_.end(); ++it)
+        {
+            if (it->first == static_cast<uint8_t>(key))
+                return it->second/2;
+        }
+        return 0;
     }
-    return 0;
-}
 
+    typedef std::vector<Player>   Players;
 
 }
 

@@ -35,7 +35,8 @@ void Replay::load( const std::string& filename )
     return;
   }
 
-  MPQFile* infoFile    = archive.getFile( "replay.details"           );
+  MPQFile* infoFile    = archive.getFile( "replay.details" );
+  MPQFile* attributesFile = archive.getFile( "replay.attributes.events" );
   const MPQFile* gameFile    = archive.getFile( "replay.game.events"    );
   const MPQFile* syncFile    = archive.getFile( "replay.sync.events"    );
   const MPQFile* messageFile = archive.getFile( "replay.message.events" );
