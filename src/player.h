@@ -20,15 +20,16 @@ namespace sc2replay
 
         const std::string& getShortName() const { return shortName_; }
         const std::string& getRace() const { return race_; }
+        int getUID() const { return getAttribute<int>(0x8u); }
 
         bool operator==(const Player& o) const { return shortName_ == o.shortName_; }
 
         bool operator!() const { return isValid(); }
         bool isValid() const { return shortName_.size() && race_.size(); }
 
-        int team() const;
-        int color() const;
-        std::string colorAsString() const;
+        int getTeam() const { return getAttribute<int>(0x10u); }
+        int getColor() const;
+        std::string getColorAsString() const;
 
         std::string shortName_;
         std::string race_;
@@ -43,7 +44,24 @@ namespace sc2replay
                 return out;
             }
 
+    private:
+        template <typename K>
+        int getAttribute(K key) const;
     };
+
+template <typename K>
+int Player::getAttribute(K key) const
+{
+    for (attributes_type::const_iterator it = attributes_.begin();
+         it != attributes_.end(); ++it)
+    {
+        if (it->first == static_cast<uint8_t>(key))
+            return it->second/2;
+    }
+    return 0;
+}
+
+
 }
 
 
@@ -52,6 +70,7 @@ BOOST_FUSION_ADAPT_STRUCT(
     (std::string, shortName_)
     (std::string, race_)
     (sc2replay::Player::attributes_type, attributes_))
+
 
 #endif
 // Local Variables:
