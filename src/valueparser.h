@@ -1,7 +1,7 @@
 #ifndef VALUEPARSER_H
 #define VALUEPARSER_H
 
-#include <boost/spirit/include/qi_parse.hpp>
+#include <boost/spirit/include/qi.hpp>
 
 namespace sc2replay { namespace value_parser 
     {
