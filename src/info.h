@@ -18,6 +18,17 @@
 namespace sc2replay
 {
 
+    // class Players : public std::vector<Player>
+    // {
+    // public:
+    //     Players() : std::vector<Player>() {}
+    //     friend std::ostream& operator<<(std::ostream& out, const Players& ps) {
+    //         out << ps.size();
+    //         return out;
+    //     }
+            
+    // };
+
     class Info
     {
     public:
@@ -73,10 +84,15 @@ namespace sc2replay
         typedef boost::spirit::qi::rule<const uint8_t*, 
                                         sc2replay::Player()> player_rule_type;
 
+        typedef boost::spirit::qi::rule<const uint8_t*,
+                                        boost::spirit::qi::locals<int>,
+                                        Players()> players_rule_type;
+
         string_rule_type string;
         value_rule_type value;
         kv_rule_type kv;
         player_rule_type player;
+        players_rule_type players;
 
     };
 
