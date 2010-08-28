@@ -41,20 +41,9 @@ namespace
 
 namespace sc2replay
 {
-    int
-    Player::team() const
-    {
-        for (attributes_type::const_iterator it = attributes_.begin();
-             it != attributes_.end(); ++it)
-        {
-            if (it->first == 0x10)
-                return it->second/2;
-        }
-        return 0;
-    }
 
     int
-    Player::color() const
+    Player::getColor() const
     {
         int r=0, g=0, b=0;
 
@@ -64,10 +53,11 @@ namespace sc2replay
     }
 
     std::string
-    Player::colorAsString() const
+    Player::getColorAsString() const
     {
         int r=0, g=0, b=0;
         ::color(attributes_,r,g,b);
         return ::toString(r,g,b);
     }
+
 }
