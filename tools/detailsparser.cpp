@@ -76,7 +76,7 @@ int main(int argc, char** argv)
         if (not it->isValid())
             continue;
         std::cout << "Team: " << it->team() << "\tshortName: " << it->getShortName() << "\tColor: " << it->colorAsString() 
-                  << "\t Race: " << it->getRace() << "\t fullName: " << it->getFullName() << std::endl;
+                  << "\t Race: " << it->getRace() << std::endl;
         for (sc2replay::Player::attributes_type::const_iterator attrit = it->attributes_.begin();
              attrit != it->attributes_.end(); ++attrit)
         {

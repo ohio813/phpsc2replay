@@ -10,6 +10,48 @@
 using namespace boost::spirit::qi;
 using namespace boost::phoenix;
 
+namespace
+{
+    template<class OutIter>
+    OutIter write_escaped(const unsigned char* begin, const unsigned char* end, OutIter out) {
+        *out++ = '"';
+        for (const unsigned char* i = begin; i != end; ++i) {
+            unsigned char c = *i;
+            if (' ' <= c and c <= '~' and c != '\\' and c != '"') {
+                *out++ = (char)c;
+            }
+            else {
+                *out++ = '\\';
+                switch(c) {
+                case '"':  *out++ = '"';  break;
+                case '\\': *out++ = '\\'; break;
+                case '\t': *out++ = 't';  break;
+                case '\r': *out++ = 'r';  break;
+                case '\n': *out++ = 'n';  break;
+                default:
+                    char const* const hexdig = "0123456789ABCDEF";
+                    *out++ = 'x';
+                    *out++ = hexdig[c >> 4];
+                    *out++ = hexdig[c & 0xF];
+                }
+            }
+        }
+        *out++ = '"';
+        return out;
+    }
+    
+    template <typename Context>
+    void errorhandler(boost::fusion::vector<const unsigned char*, const unsigned char*, 
+                                            const unsigned char*, const info&> params, 
+                      Context, error_handler_result)
+    {
+        std::cerr << "Error! Expecting " << at_c<3>(params) << " here: ";
+        write_escaped(at_c<0>(params), at_c<2>(params), std::ostream_iterator<char>(std::cerr));
+        std::cerr << " >>>>><<<<< ";
+        write_escaped(at_c<2>(params), at_c<1>(params), std::ostream_iterator<char>(std::cerr));
+        std::cerr << std::endl;
+    }
+}
 
 namespace sc2replay
 {
@@ -27,25 +69,25 @@ namespace sc2replay
         kv %= 
             word >> value;
         player = 
-            omit[byte_(0x5) >> byte_(0x12) >> byte_(0x0) >> byte_(0x2)] >>
-            string >> omit[byte_(0x2) >> byte_(0x5) >> byte_(0x8)] >> omit[kv] >> 
-            omit[repeat(6)[byte_]] >> omit[kv] >> omit[byte_(0x6) >> byte_(0x2)] >>
-            string >> omit[byte_(0x4) >> byte_(0x2)] >>
-            string >> omit[byte_(0x6) >> byte_(0x5) >> byte_(0x8)] >>
+            omit[byte_(0x5) > byte_(0x12) > byte_(0x0) > byte_(0x2)] >>
+            string /*shortname*/ >> omit[byte_(0x2) > byte_(0x5) > byte_(0x8) > kv > repeat(6)[byte_] >
+                                         repeat(2)[kv] > byte_ > byte_(0x4) > byte_(0x2)] >>
+            string /*race*/ >> omit[byte_(0x6) > byte_(0x5) > byte_(0x8)] >>
             repeat(9)[kv];
+
+        players %=
+            omit[byte_[_a = _1/2]] > repeat(_a)[player];
 
         player.name("player");
         kv.name("KeyValue");
         value.name("value");
         string.name("string");
 
-        on_error<fail>(string,
-                       std::cout << val("Error! Expecting ")
-                       << _4 << val(" here: \"") << _3 << 
-                       val("\" from: ") << _1 << std::endl
-            );
+        on_error<fail>(player, ::errorhandler<player_rule_type::context_type>);
+         
         //debug(string);
         //debug(player);
+        //debug(players);
     }
 
     Info::~Info()
@@ -56,8 +98,8 @@ namespace sc2replay
     Info::load(const uint8_t* begin, const uint8_t* end)
     {
         parse(begin, end,
-              omit[repeat(7)[byte_]] >> *player,
-              players_);
+              omit[repeat(6)[byte_]] >> players >> string, //ignoring minimapName for now
+              players_, mapName_);
     }
 
     const Info::Players& Info::getPlayers() const
