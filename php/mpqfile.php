@@ -468,21 +468,18 @@ class MPQFile {
 		}
 		// remove the original file contents
 		$this->fileData = substr_replace($this->fileData,'',$blockOffset,$blockSize);		
-		//$this->fileData = substr_replace($this->fileData,str_repeat(chr(0),$blockSize),$blockOffset,$blockSize);		
 		$newFileSize = strlen($filedata);
 		// attempt to use bzip2 compression
 		$compressedData =  chr(16) . bzcompress($filedata);
-		//$compressedData = $filedata;
+
 		$newBlockOffset = strlen($this->fileData) - $this->headerOffset;
 		if (strlen($compressedData) >= $newFileSize) {
 			$newFlags = (0x40000000 << 1) | 0x01000000;
-			//$newFlags = 0x81000000;
 			$compressedData = $filedata;
 			$newBlockSize = $newFileSize;
 		}
 		else {
 			$newFlags = (0x40000000 << 1) | 0x01000200;
-			//$newFlags = 0x81000200;
 			$newBlockSize = strlen($compressedData);
 		}
 		// fix archive size
@@ -498,9 +495,6 @@ class MPQFile {
 		$resultBlockTable = self::encryptStuff($this->blocktable,self::hashStuff("(block table)", MPQ_HASH_FILE_KEY));		
 		// replace the block table in fileData variable
 		for ($i = 0;$i < $this->blockTableSize * 4;$i++) {
-			//$this->fileData = substr($this->fileData, 0, $this->blockTableOffset + $i * 4) . pack("V",$resultBlockTable[$i]) . substr($this->fileData, $this->blockTableOffset + $i * 4 + 4);
-			//$this->fileData = substr_replace($this->fileData, pack("v",$resultBlockTable[$i] & 0xFFFF), $this->blockTableOffset + $i * 4, 2); 
-			//$this->fileData = substr_replace($this->fileData, pack("v",($resultBlockTable[$i] >> 16) & 0xFFFF), $this->blockTableOffset + $i * 4 + 2, 2); 
 			$this->fileData = substr_replace($this->fileData, pack("V",$resultBlockTable[$i]), $this->blockTableOffset + $i * 4, 4); 
 		}
 		return true;

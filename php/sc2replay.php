@@ -17,7 +17,8 @@ class SC2Replay {
 	public static $gameSpeeds = array(0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
 	public static $difficultyLevels = array(0 => "Very easy", 1=> "Easy", 2=> "Medium", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
 	public static $gameSpeedCE = array(0 => 39, 1=> 44, 2=> 60, 3=> 64, 4=> 64); // estimates, weird values
-	public static $colorIndices = array(1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Pink");
+	public static $colorIndices = array(1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Light Pink", 9=> "Violet", 10=> "Light Gray", 11=> "Dark Green", 12=> "Brown", 13=> "Light Green", 14=> "Dark Grey", 15=> "Pink");
+
 	private $players; //array, indices: color, team, sname, lname, race, startRace, handicap, ptype
 	private $gameLength; // game length in seconds
 	private $mapName;
@@ -33,6 +34,7 @@ class SC2Replay {
 	private $messages; // contains an array of the chat log messages
 	private $winnerKnown;
 	private $unitsDict;
+	private $mapHash;
 	
 	function __construct() {
 		$this->players = array();
@@ -43,7 +45,8 @@ class SC2Replay {
 		$this->debug = false;
 		$this->debugNewline = "<br />\n";
 		$this->winnerKnown = false;
-    $this->unitsDict = array();
+		$this->unitsDict = array();
+		$this->mapHash = null;
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
@@ -109,6 +112,8 @@ class SC2Replay {
 	function getBuild() { return $this->build; }
 	function getMessages() { return $this->messages; }
 	function getRealm() { return $this->realm; }
+	function getMapHash() { return $this->mapHash; }
+	function isGamePublic() { return $this->gamePublic; }
 	// getFormattedGameLength returns the time in h hrs, m mins, s secs 
 	function getFormattedGameLength() {
 		return $this->getFormattedSecs($this->gameLength);
@@ -169,8 +174,10 @@ class SC2Replay {
 			$str = "Unknown";
 			if ((class_exists("SC2ReplayUtils") || (include 'sc2replayutils.php')) && isset(SC2ReplayUtils::$depHashes[$depHash])) {
 				$str = SC2ReplayUtils::$depHashes[$depHash]['name'];
-				if (SC2ReplayUtils::$depHashes[$depHash]['type'] == SC2_DEPMAP)
+				if (SC2ReplayUtils::$depHashes[$depHash]['type'] == SC2_DEPMAP) {
 					$this->mapName = $str;
+					$this->mapHash = $depHash;
+				}
 			}
 			if ($this->debug) $this->debug(sprintf("Got debug hash $depHash (%s)",$str));
 		}
@@ -306,27 +313,6 @@ class SC2Replay {
 			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d (%s), attribVal = \"%s\"",
 							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["name"]),$attribVal));
 			switch ($attributeId) {
-				// FFA
-/*				case 0x07D6:
-					break;
-				// 4v4
-				case 0x07D5:
-					break;
-				// 3v3
-				case 0x07D4: 
-					break;
-				// 2v2
-				case 0x07D3: // my hypothesis is that every 0x07D<X> value is what the teams would
-							 // be if the game type/team size was changed.
-							 // for example if you changed the dropdownbox from 3v3 to FFA, the values
-							 // under 0x07D6 would be the initial values that you could edit.
-							 // why this is included in replay files is weird to say the least
-				
-					break;
-				// 1v1
-				case 0x07D2:
-					break;
-*/
 				case 0x0BBB: // handicap
 					$this->players[$playerId]["handicap"] = $attribVal;
 					break;
@@ -788,6 +774,9 @@ class SC2Replay {
 					switch ($eventCode) {
 						case 0x87:
 							$numByte += 8;
+							break;
+						case 0x08:
+							$numByte += 10;
 							break;
 						case 0x01: // camera movement
 						case 0x11:						
