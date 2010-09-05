@@ -945,6 +945,24 @@ class SC2Replay {
 		}
 		return ($one >> 2);
 	}
+	
+	// returns an array, array index 1 is the number of bytes for the number, array index 2 the value
+	static function createTimeStamp($frames) {
+		if ($frames > pow(2,30)) return false;
+		if ($frames >= pow(2,22)) $bytesNeeded = 3;
+		elseif ($frames >= pow(2,14)) $bytesNeeded = 2;
+		elseif ($frames >= pow(2,6)) $bytesNeeded = 1;
+		else $bytesNeeded = 0;
+		$val = 0;
+		
+		if ($bytesNeeded > 0)
+			$val = $frames & (pow(2,($bytesNeeded * 8)) - 1);
+		$val = $val | (((($frames >> ($bytesNeeded * 8)) << 2) | $bytesNeeded) << ($bytesNeeded * 8));
+		$retVal = array();
+		$retVal[1] = $bytesNeeded + 1;
+		$retVal[2] = $val;
+		return $retVal;
+	}
 
 	// gets the literal string from the sc2_abilitycodes array based on the ability code
 	// returns false if the variable doesn't exist or the file cannot be included

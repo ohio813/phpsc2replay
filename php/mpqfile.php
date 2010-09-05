@@ -515,6 +515,7 @@ class MPQFile {
 		if (!is_numeric($player)) return false; //$playerId = $this->addFakeObserver($player);
 		else $playerId = $player;
 		if ($playerId <= 0) return false;
+		if ($this->getFileSize("replay.message.events") == 0) return false;
 		$string = $this->readFile("replay.message.events");
 		$numByte = 0;
 		$time = $time * 16;
@@ -522,27 +523,30 @@ class MPQFile {
 		$messageSize = strlen($newMessage);
 		if ($messageSize >= 256) return false;
 		$totTime = 0;
+		$haveMessage = false;
 		while ($numByte < $fileSize) {
 			$pastHeaders = true;
 			$start = $numByte;
 			$timestamp = SC2Replay::parseTimeStamp($string,$numByte);
 			$pid = self::readByte($string,$numByte);
-			$opcode = self::readByte($string,$numByte);
+			$nopcode = self::readByte($string,$numByte);
 			$totTime += $timestamp;
-			if ($opcode == 0x80) {
+			if ($nopcode == 0x80) {
 				$numByte += 4;
 				$pastHeaders = false;
 			}
-			else if (($opcode & 0x80) == 0) { // message
+			else if (($nopcode & 0x80) == 0) { // message
 				$messageTarget = $opcode & 3;
 				$messageLength = self::readByte($string,$numByte);
-				if (($opcode & 8) == 8) $messageLength += 64;
-				if (($opcode & 16) == 16) $messageLength += 128;
+				if (($nopcode & 8) == 8) $messageLength += 64;
+				if (($nopcode & 16) == 16) $messageLength += 128;
 				$message = self::readBytes($string,$numByte,$messageLength);
+				$haveMessage = true;
 			}
-			else if ($opcode == 0x83) { // ping on map? 8 bytes?
+			else if ($nopcode == 0x83) { // ping on map? 8 bytes?
 				$numByte += 8;
 			}
+			$end = $numByte;
 			if ($pastHeaders && ($totTime >= $time)) {
 				$opcode = 0;
 				if ($messageSize >= 128) {
@@ -556,8 +560,23 @@ class MPQFile {
 				break;
 			}
 		}
-		$messageString = pack("c4", 4, $playerId, $opcode, $messageSize). $newMessage;
-		$newData = substr_replace($string, $messageString, $start, 0);
+
+		$nFrames = $time - ($totTime - $timestamp);
+		$frameNum = SC2Replay::createTimeStamp($nFrames);
+		$newMessageTS = "";
+		for ($i = $frameNum[1] - 1;$i >= 0;$i--) { $newMessageTS .= pack("C", ($frameNum[2] & (0xFF << ($i*8))) >> ($i*8)); }
+		$messageString = $newMessageTS . pack("C3", $playerId, $opcode, $messageSize). $newMessage;
+		$width = 0;
+		
+		if ($haveMessage) { // $haveMessage is true if there is at least one chatlog message.
+			$nextMessageTS = "";
+			$newTimeStamp = SC2Replay::createTimeStamp($timestamp - $nFrames); // calculate new timestamp for the messages following the inserted one
+			for ($i = $newTimeStamp[1] - 1;$i >= 0;$i--) { $nextMessageTS .= pack("C", ($newTimeStamp[2] & (0xFF << ($i*8))) >> ($i*8)); }
+			$messageString .= $nextMessageTS . pack("C3", $pid, $nopcode, $messageLength). $message;
+			$width = $end - $start;
+		}
+		
+		$newData = substr_replace($string, $messageString, $start, $width);
 		$this->replaceFile("replay.message.events", $newData);
 		return true;
 	}
@@ -675,6 +694,7 @@ class MPQFile {
 		$this->replaceFile("replay.game.events", $string);
 		return $playerId;
 	}
+
 	
 	private function parseKeyVal($string, &$numByte) {
 		$one = unpack("C",substr($string,$numByte,1)); 
