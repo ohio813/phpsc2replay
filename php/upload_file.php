@@ -175,10 +175,18 @@ if (isset($_FILES['userfile'])) {
 				if (class_exists("SC2Replay") || (include 'sc2replay.php')) {
 					
 					//$bool = $a->insertChatLogMessage("testing testing", "testguy", 1);
-					$bool = $a->insertChatLogMessage("testing 2", 1, 5);
+					//$bool = $a->insertChatLogMessage("testing 2", 1, 5);
 
-					$a->saveAs("testfile.SC2Replay", true);
-					$a = new MPQFile("testfile.SC2Replay", true, 2);
+					//$a->saveAs("testfile.SC2Replay", true);
+					//$a = new MPQFile("testfile.SC2Replay", true, 2);
+					$byte = 0;
+					$b = new SC2Replay($a);		
+					$b->setDebug(true);
+					$tmp = $b->parseDetailsValue($a->readFile("replay.details"),$byte);
+					echo "<pre>";
+					var_dump($tmp);
+					echo "</pre>";
+					die();
 				}
 			}
 			if ($init == MPQ_ERR_NOTMPQFILE)
@@ -191,6 +199,7 @@ if (isset($_FILES['userfile'])) {
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				echo sprintf("Realm: %s<br />\n",$b->getRealm());
+				echo sprintf("Date and time played: %s",date('jS \of F Y \a\t H:i' ,$b->getCtime()));
 				$apmString = "<b>APM graphs</b><br />\n";
 				$obsString = "";
 				$obsCount = 0;

@@ -35,6 +35,8 @@ class SC2Replay {
 	private $winnerKnown;
 	private $unitsDict;
 	private $mapHash;
+	private $gameCtime; // when the game was played, represented as ctime
+	private $gameFiletime; // when the game was played, represented as windows filetime
 	
 	function __construct() {
 		$this->players = array();
@@ -114,6 +116,8 @@ class SC2Replay {
 	function getRealm() { return $this->realm; }
 	function getMapHash() { return $this->mapHash; }
 	function isGamePublic() { return $this->gamePublic; }
+	function getCtime() { return $this->gameCtime; }
+	function getFiletime() { return $this->gameFiletime; }
 	// getFormattedGameLength returns the time in h hrs, m mins, s secs 
 	function getFormattedGameLength() {
 		return $this->getFormattedSecs($this->gameLength);
@@ -198,98 +202,96 @@ class SC2Replay {
 	// parse replay.details file and add parsed stuff to the object
 	// $string contains the contents of the file
 	function parseDetailsFile($string) {
-		if ($this->debug) $this->debug("Parsing replay.details file...");
 		$numByte = 0;
-		$numByte += 6; 
-		$numPlayers = MPQFile::readByte($string,$numByte) / 2;
-		for ($i = 1; $i <= $numPlayers;$i++) {
-			$p = $this->parsePlayerStruct($string,$numByte,$i);
+		$array = $this->parseDetailsValue($string,$numByte);
+		$playerArray = $array[0];
+		foreach ($playerArray as $index => $player) {
+			$p = array();
+			$p["name"] = $player[0];
+			$p["uid"] = $player[1][4];
+			$p["color"] = sprintf("%02X%02X%02X",$player[3][1],$player[3][2],$player[3][3]);
+			$p["apmtotal"] = 0;
+			$p["apm"] = array();
+			$p["firstevents"] = array();
+			$p["numevents"] = array();
+			$p["ptype"] = "";
+			$p["handicap"] = 0;
+			$p["team"] = 0;
+			$p["lrace"] = $player[2]; // locale-specific player race
+			$p["race"] = ""; // player race in english, populated by checking which workers they build
+			$p["id"] = $index + 1;
+			if ($p["uid"] == 0)
+				$p["isComp"] = true;
+			else 
+				$p["isComp"] = false;
+			$p["isObs"] = false;
+			$this->players[$index + 1] = $p;
 		}
-		$mapnameLen = MPQFile::readByte($string,$numByte) / 2;
-		$mapName = MPQFile::readBytes($string,$numByte,$mapnameLen);
-		$this->mapName = $mapName;
-
-		$numByte += 2; // 04 02
-		$u1Len = MPQFile::readByte($string,$numByte) / 2;
-		if ($u1Len > 0) MPQFile::readByte($string,$numByte,$u1Len);
-
-		
-		$numByte += 5; // 06 05 02 00 02
-		$minimapnameLen = MPQFile::readByte($string,$numByte) / 2;
-		$minimapName = MPQFile::readBytes($string,$numByte,$minimapnameLen);
+		$this->mapName = $array[1];
+		$this->gameFiletime = $array[5];
+		$this->gameCtime = floor(($array[5] - 116444735995904000) / 10000000);
+	}
+	// a function that is recursively called to parse replay.details file
+	function parseDetailsValue($string, &$numByte) {
+		$dataType = MPQFile::readByte($string,$numByte);
+		switch ($dataType) {
+			case 0x02: // binary data
+				$dataLen = $this->parseVLFNumber($string,$numByte);
+				return MPQFile::readBytes($string,$numByte,$dataLen);
+				break;
+			case 0x04: // simple array
+				$array = array();
+				$numByte += 2; // skip 01 00
+				$numElements = $this->parseVLFNumber($string,$numByte);
+				while ($numElements > 0) {
+					$array[] = $this->parseDetailsValue($string,$numByte);
+					$numElements--;
+				}
+				return $array;
+				break;
+			case 0x05: // array with keys
+				$array = array();
+				$numElements = $this->parseVLFNumber($string,$numByte);
+				while ($numElements > 0) {
+					$index = $this->parseVLFNumber($string,$numByte);
+					$array[$index] = $this->parseDetailsValue($string,$numByte);
+					$numElements--;
+				}				
+				return $array;
+				break;
+			case 0x06: // number of one byte
+				return MPQFile::readByte($string,$numByte);
+				break;
+			case 0x07: // number of four bytes
+				return MPQFile::readUInt32($string,$numByte);
+				break;
+			case 0x09: // number in VLF
+				return $this->parseVLFNumber($string,$numByte);
+				break;
+			default:
+				if ($this->debug) $this->debug(sprintf("Unknown data type in function parseDetailsValue (%d)",$dataType));
+				return false;
+		}
 	}
 	
-	// parse a player struct in the replay.details file
-	private function parsePlayerStruct($string,&$numByte,$id) {
-		$numByte += 4;
-		$sNameLen = MPQFile::readByte($string,$numByte) / 2;
-		if ($sNameLen > 0) $sName = MPQFile::readBytes($string,$numByte,$sNameLen);
-		else $sName = NULL;
-
-		$numByte += 5; // 02 05 08 00 09
-		$numByte += 4; // 00/04 02 07 00
-		$numByte += 3; // 00 00 00 // 00 53 32 (S2)
-		$hadKey = true;
-		$keys = array();
-		while ($hadKey) {
-			$hadKey = false;
-			$key = unpack("c2",MPQFile::readBytes($string,$numByte,2));
-			if ($key[2] == 9) { 
-				$hadKey = true; 
-				$keys[$key[1]] = $this->parseKeyVal($string,$numByte); 
+	private function parseVLFNumber($string, &$numByte) {
+		$number = 0;
+		$first = true;
+		$multiplier = 1;
+		for ($i = MPQFile::readByte($string,$numByte),$bytes = 0;true;$i = MPQFile::readByte($string,$numByte),$bytes++) {
+			$number += ($i & 0x7F) * pow(2,$bytes * 7);
+			if ($first) {
+				if ($number & 1) {
+					$multiplier = -1;
+					$number--;
+				}
+				$first = false;
 			}
-			else if ($key[1] == 4 && $key[2] == 2) { break; }
+			if (($i & 0x80) == 0) break;
 		}
-		if ($this->debug) {
-			foreach ($keys as $k => $v)
-				$this->debug("Got pre-race($sName) key: $k, value: $v");
-		}
-
-		$raceLen = MPQFile::readByte($string,$numByte) / 2;
-		if ($raceLen > 0) $race = MPQFile::readBytes($string,$numByte,$raceLen);
-		else $race = NULL;
-		$numByte += 3; // 06 05 08
-		$hadKey = true;
-		while ($hadKey) {
-			$keyVal = "";
-			$hadKey = false;
-			$key = unpack("c2",MPQFile::readBytes($string,$numByte,2));
-			if ($key[2] == 9) { 
-				$hadKey = true;
-				$keyVal = $this->parseKeyVal($string,$numByte);
-				if ($key[1] == 2) { $cR = $keyVal / 2; } // red color
-				if ($key[1] == 4) { $cG = $keyVal / 2; } // green color
-				if ($key[1] == 6) { $cB = $keyVal / 2; } // blue color
-				if ($key[1] == 16) { $party = $keyVal / 2; } // party number?
-				if ($this->debug) $this->debug(sprintf("%s Key: %d, value: %d",$sName,$key[1], $keyVal));
-			}
-			else if ($key[1] == 5 && $key[2] == 18) {$numByte -= 2; break; } // next player
-			else if ($key[1] == 2 && $key[2] == 2) { break; } // end of player section
-		}
-		if (($sName === NULL)) {
-			if ($this->debug) $this->debug("Got null player");
-			return;
-		}
-
-		// $this->players[$id]["sName"] = $sName; // deprecated array value before there was only a short name
-		$this->players[$id]["name"] = $sName; // player name
-		$this->players[$id]["lrace"] = $race; // locale-specific player race
-		$this->players[$id]["race"] = ""; // player race in english, populated by checking which workers they build
-		$this->players[$id]["id"] = $id;
-		$this->players[$id]["party"] = $party;
-		$this->players[$id]["team"] = 0;
-		$this->players[$id]["color"] = sprintf("%02X%02X%02X",$cR,$cG,$cB);
-		$this->players[$id]["apmtotal"] = 0;
-		$this->players[$id]["apm"] = array();
-		$this->players[$id]["firstevents"] = array();
-		$this->players[$id]["numevents"] = array();
-		$this->players[$id]["ptype"] = "";
-		$this->players[$id]["handicap"] = 0;
-		$this->players[$id]["isComp"] = false;
-		$this->players[$id]["uid"] = $keys[8] / 2;
-		$this->players[$id]["isObs"] = false; // all players present in replay.details file are not observers
-		if ($this->debug) $this->debug(sprintf("Got player: %s, Race: %s, Party: %s, Color: %s",$sName, $race, $party, $this->players[$id]["color"]));
-		return;
+		$number *= $multiplier;
+		$number /= 2; // can't use right-shift because the datatype will be float for the timestamp on 32-bit systems
+		return $number;
 	}
 	
 	// parameter is the contents of the replay.attributes.events file
