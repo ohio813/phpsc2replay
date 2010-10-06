@@ -103,6 +103,12 @@ class MPQFile {
 		$numByte += 4;
 		return $tmp[1];
 	}
+	
+	// parse user data block in the replay file
+	private function parseReplayDataHeader() {
+		//todo
+	}
+	
 	function parseHeader() {
 		$fp = 0;
 		$headerParsed = false;
@@ -406,6 +412,7 @@ class MPQFile {
 	function getHashTable() { return $this->hashtable; }
 	function getBlockTable() { return $this->blocktable; }
 	function getGameLength() { return $this->gameLen; }
+	
 	// prints block table or hash table, $data is the data in an array of UInt32s
 	function printTable($data) {
 		$this->debug("Hash table: HashA, HashB, Language+platform, Fileblockindex");
