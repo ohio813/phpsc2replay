@@ -176,9 +176,9 @@ class SC2Replay {
 			$depHash = unpack("H*", MPQFile::readBytes($string,$numByte,32));
 			$depHash = $depHash[1];
 			$str = "Unknown";
-			if ((class_exists("SC2ReplayUtils") || (include 'sc2replayutils.php')) && isset(SC2ReplayUtils::$depHashes[$depHash])) {
-				$str = SC2ReplayUtils::$depHashes[$depHash]['name'];
+			if ((class_exists("SC2ReplayUtils") || (include 'sc2replayutils.php')) && isset(SC2ReplayUtils::$depHashes[$depHash]['type'])) {
 				if (SC2ReplayUtils::$depHashes[$depHash]['type'] == SC2_DEPMAP) {
+					$str = SC2ReplayUtils::$depHashes[$depHash]['name'];
 					$this->mapName = $str;
 					$this->mapHash = $depHash;
 				}
@@ -540,7 +540,7 @@ class SC2Replay {
 							if ($this->build >= 16561) {
 								$firstByte = MPQFile::readByte($string,$numByte);
 								$temp = MPQFile::readByte($string,$numByte);
-								$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | MPQFile::readByte($string,$numByte);
+								$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte) & 0x3F);
 								if ($temp == 0x20 || $temp == 0x22) {
 									$nByte = $ability & 0xFF;
 									if ($nByte > 0x07) {
@@ -567,10 +567,15 @@ class SC2Replay {
 											break;
 									}
 								}
+								if ($temp & 0x20) {
+									$this->addPlayerAbility($playerId, ceil($time /16), $ability);
+									$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
+									$this->events = $events;
+								}
+								
 								if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),$ability));
 								$this->addPlayerAction($playerId, floor($time / 16));
-
-								//$this->addPlayerAbility($playerId, ceil($time /16), $ability);
+									
 								break;
 							}
 							// at least 32 bytes
@@ -1134,10 +1139,16 @@ class SC2Replay {
 		if (class_exists('SC2ReplayUtils')) {
 			if ($this->debug) $debug = sprintf(" (%06X)",$num);
 			else $debug = "";
+			$tmp = $this->getAbilityArray($num);
+			if ($tmp === false)
+				return false;
+			return $tmp['desc'].$debug;
+			/*
 			if (isset(SC2ReplayUtils::$ABILITYCODES[$num]))
 				return SC2ReplayUtils::$ABILITYCODES[$num]['desc'].$debug;
 			else if ($this->debug)
 				$this->debug(sprintf("Unknown ability code: %06X",$num));
+			*/
 		}
 		else if ($this->debug)
 			$this->debug("Class SC2ReplayUtils not found!");
@@ -1145,9 +1156,17 @@ class SC2Replay {
 	}
 	function getAbilityArray($num) {
 		if (class_exists('SC2ReplayUtils')) {
-			if (isset(SC2ReplayUtils::$ABILITYCODES[$num]))
-				return SC2ReplayUtils::$ABILITYCODES[$num];
-			else if ($this->debug)
+			if ($this->build >= 16561) $array = SC2ReplayUtils::$ABILITYCODES_16561;
+			else $array = SC2ReplayUtils::$ABILITYCODES;
+
+			if (isset($array[$num])) {
+				if (isset($array[$num]['link'])) {
+					return SC2ReplayUtils::$ABILITYCODES[$array[$num]['link']];
+				}
+				else return $array[$num];
+			}
+			// if we get to this point, none of the return statements fired and it's an unknown event
+			if ($this->debug)
 				$this->debug(sprintf("Unknown ability code: %06X",$num));
 		}
 		else if ($this->debug)
