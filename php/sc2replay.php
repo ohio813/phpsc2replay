@@ -983,6 +983,9 @@ class SC2Replay {
 						case 0x08:
 							$numByte += 10;
 							break;
+						case 0x18:
+							$numByte += 162;
+							break;
 						case 0x01: // camera movement
 						case 0x11:						
 						case 0x21:
