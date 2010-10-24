@@ -196,10 +196,13 @@ if (isset($_FILES['userfile'])) {
 				$b = $a->parseReplay();
 				$parseDurationString .= sprintf("Parsed replay in %d ms.<br />\n",((microtime_float() - $start)*1000));
 				$players = $b->getPlayers();
+				$recorder = $b->getRecorder();
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				echo sprintf("Realm: %s<br />\n",$b->getRealm());
-				echo sprintf("Date and time played: %s",date('jS \of F Y \a\t H:i' ,$b->getCtime()));
+				echo sprintf("Date and time played: %s<br />\n",date('jS \of F Y \a\t H:i' ,$b->getCtime()));
+				if ($recorder != null)
+					echo sprintf("Replay recorded by: %s (EXPERIMENTAL!)<br />\n",$recorder['name']);
 				$apmString = "<b>APM graphs</b><br />\n";
 				$obsString = "";
 				$obsCount = 0;
