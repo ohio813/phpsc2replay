@@ -16,7 +16,6 @@
 class SC2Replay {
 	public static $gameSpeeds = array(0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
 	public static $difficultyLevels = array(0 => "Very easy", 1=> "Easy", 2=> "Medium", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
-	public static $gameSpeedCE = array(0 => 39, 1=> 44, 2=> 60, 3=> 64, 4=> 64); // estimates, weird values
 	public static $colorIndices = array(1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Light Pink", 9=> "Violet", 10=> "Light Gray", 11=> "Dark Green", 12=> "Brown", 13=> "Light Green", 14=> "Dark Grey", 15=> "Pink");
 
 	private $players; //array, indices: color, team, sname, lname, race, startRace, handicap, ptype
@@ -37,6 +36,7 @@ class SC2Replay {
 	private $mapHash;
 	private $gameCtime; // when the game was played, represented as ctime
 	private $gameFiletime; // when the game was played, represented as windows filetime
+	private $recorderId;
 	
 	function __construct() {
 		$this->players = array();
@@ -49,6 +49,7 @@ class SC2Replay {
 		$this->winnerKnown = false;
 		$this->unitsDict = array();
 		$this->mapHash = null;
+		$this->recorderId = 0;
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
@@ -118,6 +119,7 @@ class SC2Replay {
 	function isGamePublic() { return $this->gamePublic; }
 	function getCtime() { return $this->gameCtime; }
 	function getFiletime() { return $this->gameFiletime; }
+	function getRecorder() { if ($this->recorderId == 0) return null; return $this->players[$this->recorderId]; }
 	// getFormattedGameLength returns the time in h hrs, m mins, s secs 
 	function getFormattedGameLength() {
 		return $this->getFormattedSecs($this->gameLength);
@@ -163,9 +165,10 @@ class SC2Replay {
 		$numByte += 6; // skip 6 bytes, fixed length, unknown what it means
 		$numByte += 4; // skip literal string 'Dflt'
 		$numByte += 15; // skip unknown 15 bytes
-		$accountIdentifierLength = MPQFile::readByte($string,$numByte); // present at least in My Documents\Starcraft 2\Accounts\<value>
-		if ($accountIdentifierLength > 0)
+		$accountIdentifierLength = MPQFile::readByte($string,$numByte); // unknown account id thingy
+		if ($accountIdentifierLength > 0) {
 			$accountIdentifier = MPQFile::readBytes($string,$numByte,$accountIdentifierLength);
+		}
 		$numByte += 684; // length seems to be fixed, data seems to vary at least based on number of players
 		while (true) {
 			$str = MPQFile::readBytes($string,$numByte,4);
@@ -176,18 +179,25 @@ class SC2Replay {
 			$depHash = unpack("H*", MPQFile::readBytes($string,$numByte,32));
 			$depHash = $depHash[1];
 			$str = "Unknown";
-			if ((class_exists("SC2ReplayUtils") || (include 'sc2replayutils.php')) && isset(SC2ReplayUtils::$depHashes[$depHash]['type'])) {
-				if (SC2ReplayUtils::$depHashes[$depHash]['type'] == SC2_DEPMAP) {
-					$str = SC2ReplayUtils::$depHashes[$depHash]['name'];
-					$this->mapName = $str;
-					$this->mapHash = $depHash;
-				}
+			if ((class_exists("SC2ReplayUtils") || (include 'sc2replayutils.php')) && isset(SC2ReplayUtils::$depHashes[$depHash])) {
+				$str = SC2ReplayUtils::$depHashes[$depHash];
+				$this->mapName = $str;
+				$this->mapHash = $depHash;
 			}
 			if ($this->debug) $this->debug(sprintf("Got debug hash $depHash (%s)",$str));
 		}
+		// if map hash was unknown, check the map locales array for a matching string value
+		// useful when new hashes aren't yet added to the $depHashes array and the map name is localized but the map hash is just an update, not a new map
+		if ($this->mapHash == null && (class_exists("SC2ReplayUtils") && !isset(SC2ReplayUtils::$mapLocales[$this->mapName]))) {
+			foreach (SC2ReplayUtils::$mapLocales as $value) {
+				if (in_array($this->mapName,$value)) { $this->mapName = $value['enUS']; break; }
+			}
+		}
+		
 		// start of variable length data portion
 		$numByte += 2;
-		$numPlayers = MPQFile::readByte($string,$numByte);
+		//$numPlayers = MPQFile::readByte($string,$numByte);
+		$numPlayers = count($tmpArray);
 		$i = $numPlayers;
 		foreach ($tmpArray as $player) {
 			if (in_array($player['name'],$playerNames)) continue;
@@ -291,7 +301,7 @@ class SC2Replay {
 			if (($i & 0x80) == 0) break;
 		}
 		$number *= $multiplier;
-		$number /= 2; // can't use right-shift because the datatype will be float for the timestamp on 32-bit systems
+		$number /= 2; // can't use right-shift because the datatype will be float for large values on 32-bit systems
 		return $number;
 	}
 	
@@ -369,6 +379,8 @@ class SC2Replay {
 				case 0x01F4: // player type, Humn or Comp
 					$this->players[$playerId]["ptype"] = $attribVal; // deprecated
 					$this->players[$playerId]["isComp"] = ($attribVal == 'Comp')?true:false;
+					//if ($attribVal == 'Open')
+					//$this->players[$playerId]["isObs"] = true;
 					break;
 				case 0x0BB9: // initial race, Prot Terr Zerg or RAND
 					$this->players[$playerId]["srace"] = $attribVal;
@@ -438,7 +450,7 @@ class SC2Replay {
 		return (($bytes[1] << 16) | ($bytes[2] << 8) | ($bytes[3]));
 	}
 	
-	// gets players who actually played in the game, meaning excludes observers and party members.
+	// gets players who actually played in the game, meaning excludes observers.
 	public function getActualPlayers() {
 		$tmp = array();
 		foreach ($this->players as $val)
@@ -452,13 +464,22 @@ class SC2Replay {
 		$len = strlen($string);
 		$messages = array();
 		$totTime = 0;
+		$recorderArray = array();
+		foreach ($this->players as $player) {
+			if ($player['isComp'] == true)
+				$recorderArray[$player['id']] = false;
+			else
+				$recorderArray[$player['id']] = true;
+		}
 		while ($numByte < $len) {
 			$timestamp = self::parseTimeStamp($string,$numByte);
 			$playerId = MPQFile::readByte($string,$numByte);
 			$opcode = MPQFile::readByte($string,$numByte);
 			$totTime += $timestamp;
-			if ($opcode == 0x80) // header weird thingy?
+			if ($opcode == 0x80) { // header weird thingy?
 				$numByte += 4;
+				$recorderArray[$playerId] = false;
+			}
 			else if (($opcode & 0x80) == 0) { // message
 				$messageTarget = $opcode & 3;
 				$messageLength = MPQFile::readByte($string,$numByte);
@@ -473,6 +494,19 @@ class SC2Replay {
 			}
 
 		}
+		$recorderId = 0;
+		foreach ($recorderArray as $id => $bool) {
+			if ($bool) {
+				if ($recorderId > 0) { // found a second recorder, so something is clearly broken
+					$recorrderId = 0;
+					break;
+				}
+				else
+					$recorderId = $id;
+			}
+		}
+		if ($recorderId > 0)
+			$this->recorderId = $recorderId;
 		$this->messages = $messages;
 	}
 	
@@ -880,8 +914,9 @@ class SC2Replay {
 									$tmp = MPQFile::readByte($string,$numByte);
 							}
 							if ($this->build >= 16561) { 
-								if ($byte1 == 0x0A || $byte1 == 0x09) {
-									$numByte += MPQFile::readByte($string,$numByte) & 7;
+								if ($byte1 & 8) {
+								//if ($byte1 == 0x0A || $byte1 == 0x09) {
+									$numByte += MPQFile::readByte($string,$numByte) & 0x0F;
 									break;
 								}
 								$extraBytes = floor($byte1 / 8);
@@ -894,7 +929,7 @@ class SC2Replay {
 								else {
 									if (($byte1 & 4) && ($byte2 & 7) > 4) $numByte++;
 									if (($byte1 & 4) && ($byte2 & 8)) $numByte++;
-									if ($byte1 & 8) $numByte += ($byte2 & 0x0F) - 1;
+									//if ($byte1 & 8) $numByte += ($byte2 & 0x0F) - 1;
 								}
 							}
 							if ($this->debug) $this->debug(sprintf("Byte1: $byte1, Byte2: $byte2, Numbyte: %04X, Extra bytes: $extraBytes",$numByte));
@@ -991,11 +1026,30 @@ class SC2Replay {
 						case 0x16:
 							$numByte += 24;
 							break;
+						case 0xC6: // unknown
+							$numByte += 16;
+							break;
 						case 0x18:
+							$numByte += 4;
+							break;
+						case 0x87: //unknown
 							$numByte += 4;
 							break;
 						case 0x1C:
 						case 0x2C: // no data
+						case 0x3C:
+						case 0x4C:
+						case 0x5C:
+						case 0x6C:
+						case 0x7C:
+						case 0x8C:
+						case 0x9C:
+						case 0xAC:
+						case 0xBC:
+						case 0xCC:
+						case 0xDC:
+						case 0xEC:
+						case 0xFC:
 							break;
 						default:
 							$knownEvent = false;
@@ -1022,46 +1076,46 @@ class SC2Replay {
 					floor($time / 16),$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$eventCode,$numByte));
 		}
 		// in case ability codes change, populate empty 'race' array index to the locale-specific value
+		$teamCounts = array();
 		foreach ($this->getActualPlayers() as $val) {
 			if ($val['race'] == "") 
 				$this->players[$val['id']]['race'] = $val['lrace'];
+			if ($this->recorderId > 0 && $val['id'] == $this->recorderId) // if the recorder is a player, add him to the player left -array
+				$playerLeft[] = $val['id'];								  // for maximum accuracy in winner detection
+			if (isset($teamCounts[$val['team']]))
+				$teamCounts[$val['team']]++; // populate the array with the number of players for each team
+			else
+				$teamCounts[$val['team']] = 1;
 		}
-		// update winners based on $playerLeft -array
 		$numLeft = count($playerLeft);
 		$numActual = count($this->getActualPlayers());
 		$lastLeaver = -1;
 		foreach ($playerLeft as $val) {
-			// mark the previous leaver as a loser
-			if ($lastLeaver != -1) 
-				$this->players[$val]['won'] = -1;
 			$lastLeaver = $val;
+			$teamCounts[$this->players[$val]['team']]--;
 		}
-		// if the number of players who left is $numActual - 1, then everyone else except the recorder left and he is the winner
-		// if the number of players who left is $numActual - 2, then whoever left after the recorder is the winner. can be determined if the recorder is known.
-		// otherwise the winner cannot be determined, since any one of the players who left after the recorder could be the winner
-		if ($numLeft == ($numActual - 1)) {
-			if ($this->debug) $this->debug("Found winner");
-			$this->players[$lastLeaver]['won'] = -1;
-			$this->winnerKnown = true;
-			foreach ($this->getActualPlayers() as $value) {
-				if (isset($value['won']) && $value['won'] == -1) continue;
-				$winteam = $value['team'];
+		// at this point teams with 0 players are clearly the losers (with the exception below). 
+		// If there are two or more teams with 1 or more players still left, winner can't be determined.
+		// If there is exactly one team with more than 0 players left, that team is the winner
+		// If no teams have more than 0 players left, the last leaver's team is the winner.
+		$tempWinnerTeam = 0;
+		$winnerKnown = false;
+		
+		for ($i = 1;$i <= 15;$i++) { // maximum number of teams is 15 (ffa)
+			if (!isset($teamCounts[$i])) continue;
+			if ($teamCounts[$i] > 0 && $tempWinnerTeam == 0) { $winnerKnown = true; $tempWinnerTeam = $i; } // initially set winner as known
+			else if ($teamCounts[$i] > 0 && $tempWinnerTeam > 0) { $winnerKnown = false; break; } // more than 1 team with 1 or more players left, winner undeterminable
+		}
+		if ($tempWinnerTeam == 0) { // this means that no team had more than 0 players left, so use the team of $lastLeaver
+			$winnerKnown = true;
+			$tempWinnerTeam = $this->players[$lastLeaver]['team'];
+		}
+		$this->winnerKnown = $winnerKnown;
+		if ($winnerKnown) {
+			foreach ($this->getActualPlayers() as $val) {
+				if ($val['team'] == $tempWinnerTeam) $this->players[$val['id']]['won'] = 1;
+				else $this->players[$val['id']]['won'] = 0;
 			}
-		}
-		else  if ($numLeft == ($numActual)) {
-			if ($this->debug) $this->debug("Found winner");
-			$this->players[$lastLeaver]['won'] = 1;
-			$this->winnerKnown = true;
-			$winteam = $this->players[$lastLeaver]['team'];
-		}
-		else {
-			if ($this->debug) $this->debug("Unable to parse winner");
-			return $numEvents;
-		}
-
-		foreach ($this->getActualPlayers() as $val) {
-			if ($val['team'] == $winteam) $this->players[$val['id']]['won'] = 1;
-			else $this->players[$val['id']]['won'] = 0;
 		}
 		return $numEvents;
 	}
