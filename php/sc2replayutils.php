@@ -926,7 +926,6 @@ class SC2ReplayUtils {
 		"4fb5be5cf973fda2e16b684ef2d2452df8e51a76308543b6ca2a495912a87836" => "The Bio Lab",
 		"f720500a2306f36330980d951ec016eaec6c33f0e7d7816323f3e1b111bde0da" => "Toxic Slums",
 		"32d145b82695942fb39203c0369d8b0af321fcdb83771b9e8f4b05c902bfe1f9" => "Toxic Slums",
-		"58558f452af5ccf36c2eb1a6f55f510b4779b21fb0c316cceca38a69c5ffb3d1" => "Toxic Slums",
 		"f99ea81406e87393885e793ec89aa3078154792429db49f948c7f52bfd636bd8" => "Twilight Fortress",
 		"9ab0aa558962c30485f250431f2edb09bc7ff23b6746252549f51bbc63e404a1" => "Twilight Fortress",
 		"47604d075cbc4ff7eb8a716192e47bc4ece549ec1d280d79de15a06c81357cc0" => "Typhon",
