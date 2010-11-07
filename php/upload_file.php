@@ -189,9 +189,9 @@ if (isset($_FILES['userfile'])) {
 					die();
 				}
 			}
-			if ($init == MPQ_ERR_NOTMPQFILE)
+			if ($init == false)
 				echo "Error parsing uploaded file, make sure it is a valid MPQ archive!<br />\n";
-			else if ($a->getFileType() == MPQ_SC2REPLAYFILE) {
+			else if ($a->getFileType() == "SC2replay") {
 				echo sprintf("Version: %s<br />\n",$a->getVersionString());
 				$b = $a->parseReplay();
 				$parseDurationString .= sprintf("Parsed replay in %d ms.<br />\n",((microtime_float() - $start)*1000));
@@ -220,7 +220,7 @@ if (isset($_FILES['userfile'])) {
 						$wincolor = (isset($value['won']) && $value['won'] == 1)?0x00FF00:0xFF0000;
 					else
 						$wincolor = 0xFFFFFF;
-					if ($value['isComp'])
+					if ($value['isComp'] && $b->getTeamSize() !== null)
 						$difficultyString = sprintf(" (%s)",SC2Replay::$difficultyLevels[$value['difficulty']]);
 					else
 						$difficultyString = "";
