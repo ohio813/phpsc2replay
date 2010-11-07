@@ -22,7 +22,8 @@ class SC2Replay {
 	private $gameLength; // game length in seconds
 	private $mapName;
 	private $gameSpeed; // game speed, number from 0-4. see $gameSpeeds array above
-	private $teamSize; // team size in the format xvx, eg. 1v1
+	private $teamSize; // team size in the format xvx, eg. 1v1 in replay.attributes.events
+	private $realTeamSize; // real team size, eg. 1v2, 1v3, 2v4 etc.
 	private $gamePublic;
 	private $realm;
 	private $version;
@@ -44,6 +45,7 @@ class SC2Replay {
 		$this->mapName = NULL;
 		$this->gameSpeed = 0;
 		$this->teamSize = NULL;
+		$this->realTeamSize = NULL;
 		$this->debug = false;
 		$this->debugNewline = "<br />\n";
 		$this->winnerKnown = false;
@@ -111,6 +113,7 @@ class SC2Replay {
 	function getGameSpeed() { return $this->gameSpeed; }
 	function getGameSpeedText() { return self::$gameSpeeds[$this->gameSpeed]; }
 	function getTeamSize() { return $this->teamSize; }
+	function getRealTeamSize() { return $this->realTeamSize; }
 	function getVersion() { return $this->version; }
 	function getBuild() { return $this->build; }
 	function getMessages() { return $this->messages; }
@@ -269,20 +272,23 @@ class SC2Replay {
 			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d, attribVal = \"%s\"",
 							$attributeId,$playerId,$attribVal));
 		}
-		// map the player ids to actual player ids
-		// assumes that the slots are populated from the lowest player id to highest player id
-		$tmpPlayerArray = array();
-		for ($i = 1,$playerId = 1;isset($attribArray[0x01F4][$i]);$i++) {
-			if ($attribArray[0x01F4][$i] == "Open") continue;
-			$tmpPlayerArray[$i] = $this->players[$playerId];
-			$tmpPlayerArray[$i]['id'] = $i;
-			$playerId++;
-		}
-		unset($this->players);
-		$this->players = $tmpPlayerArray;
-		$numSlots = $i;
 		if ($numAttribs == 0)
 			return;
+		// map the player ids to actual player ids
+		// assumes that the slots are populated from the lowest player id to highest player id
+		if (isset($attribArray[0x01F4])) {
+			$tmpPlayerArray = array();
+			for ($i = 1,$playerId = 1;isset($attribArray[0x01F4][$i]);$i++) {
+				if ($attribArray[0x01F4][$i] == "Open") continue;
+				$tmpPlayerArray[$i] = $this->players[$playerId];
+				$tmpPlayerArray[$i]['id'] = $i;
+				$playerId++;
+			}
+			unset($this->players);
+			$this->players = $tmpPlayerArray;
+			$numSlots = $i;
+		}
+		else $numSlots = 0;
 		// see which attribute id gives the correct team values
 		switch ($attribArray[0x07D1][0x10]) {
 			case "1v1": $teamAttrib = 0x07D2; break;
@@ -300,6 +306,7 @@ class SC2Replay {
 			default:
 		}
 		// populate the data structures with relevant values
+		$teamArray = array();
 		for ($i = 1;$i < $numSlots;$i++) {
 			if (!isset($this->players[$i])) continue;
 			//$actualPlayerId = $playerIdArray[$i];
@@ -315,8 +322,20 @@ class SC2Replay {
 			$this->players[$i]["colorIndex"] = intval(substr($attribArray[0x0BBA][$i],2));
 			$this->players[$i]["sColor"] = self::$colorIndices[intval(substr($attribArray[0x0BBA][$i],2))];
 			// set team
-			$this->players[$i]["team"] = intval(substr($attribArray[$teamAttrib][$i],1));
+			$team = intval(substr($attribArray[$teamAttrib][$i],1));
+			if (isset($teamArray[$team])) $teamArray[$team]++;
+			else $teamArray[$team] = 1;
+			$this->players[$i]["team"] = $team;
 		}
+		foreach ($teamArray as $team => $count) {
+			if (isset($teamSizeString)) $teamSizeString .= "v$count";
+			else $teamSizeString = "$count";
+		}
+		// if no team data, set a default value
+		if (!isset($teamSizeString)) $teamSizeString = "0v0";
+		// if only one team is found for some weird reason, add v0 for completeness eg 4v0 or so
+		if (strpos($teamSizeString,"v") === false) $teamSizeString .= "v0";
+		$this->realTeamSize = $teamSizeString;
 		// set team size
 		$this->teamSize = $attribArray[0x07D1][0x10];
 		// game speed
