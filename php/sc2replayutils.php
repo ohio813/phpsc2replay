@@ -1006,6 +1006,37 @@ class SC2ReplayUtils {
 		"Worldship" => array("deDE" => "Das Weltenschiff", "enUS" => "Worldship", "" => "Worldship", "esES" => "Nave planetaria", "esMX" => "Navemundo", "frFR" => "Vaisseau-monde", "itIT" => "Nave dei mondi", "koKR" => "세계함", "plPL" => "Statek-świat", "ptBR" => "Nave Mundo", "ruRU" => "Корабль зел-нага", "zhCN" => "世界舰船", "zhTW" => "宇宙艦"),
 		"Xel'Naga Caverns" => array("deDE" => "Xel'Naga-Höhlen", "enUS" => "Xel'Naga Caverns", "" => "Xel'Naga Caverns", "esES" => "Cavernas Xel'Naga", "esMX" => "Cavernas Xel'Naga", "frFR" => "Cavernes Xel'Naga", "itIT" => "Caverne xel'naga", "koKR" => "젤나가 동굴", "plPL" => "Jaskinie xel'naga", "ptBR" => "Cavernas Xel'Naga", "ruRU" => "Пещеры зел-нага", "zhCN" => "萨尔纳加秘窟", "zhTW" => "薩爾納加洞穴")
 	);
+	// returns the ability array for the specified ability code ($num) and game build ($build)
+	// return false if the ability code is unknown
+	static function getAbilityArray($num, $build) {
+		while ($build > 0) {
+			if ($build >= 16561) {
+				$array = self::$ABILITYCODES_16561;
+				$build = 16560;
+			}
+			else {
+				$array = self::$ABILITYCODES;
+				$build = 0;
+			}
+
+			if (isset($array[$num])) {
+				if (isset($array[$num]['link'])) {
+					$num = $array[$num]['link'];
+				}
+				else return $array[$num];
+			}
+			else return false;
+		}
+		return false;
+	}
+	// returns the unit array for the specified unit code ($num) and game build ($build)
+	// return false if the unit code is unknown
+	static function getUnitArray($num, $build) {
+		if ($build >= 16561) return false;
+		if (isset(self::$UNITCODES[$num]))
+			return self::$UNITCODES[$num];
+		return false;
+	}
 }
 
 ?>

@@ -14,9 +14,9 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 class SC2Replay {
-	public static $gameSpeeds = array(0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
-	public static $difficultyLevels = array(0 => "Very easy", 1=> "Easy", 2=> "Medium", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
-	public static $colorIndices = array(1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Light Pink", 9=> "Violet", 10=> "Light Gray", 11=> "Dark Green", 12=> "Brown", 13=> "Light Green", 14=> "Dark Grey", 15=> "Pink");
+	public static $gameSpeeds = array("" => "Unknown", 0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
+	public static $difficultyLevels = array("" => "Unknown", 0 => "Very easy", 1=> "Easy", 2=> "Medium", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
+	public static $colorIndices = array("" => "Unknown", 1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Light Pink", 9=> "Violet", 10=> "Light Gray", 11=> "Dark Green", 12=> "Brown", 13=> "Light Green", 14=> "Dark Grey", 15=> "Pink");
 
 	private $players; //array, indices: color, team, sname, lname, race, startRace, handicap, ptype
 	private $gameLength; // game length in seconds
@@ -72,14 +72,6 @@ class SC2Replay {
 		else if ($this->debug) $this->debug("Error reading the replay.details file");
 		if ($this->debug) $this->debug(sprintf("Parsed replay.details file in %d ms.",(microtime_float() - $start)*1000));
 
-		$file = $mpqfile->readFile("replay.initData");
-		$start = microtime_float();
-		if ($file !== false) {
-			$this->parseInitDataFile($file);
-		}
-		else if ($this->debug) $this->debug("Error reading the replay.initData file");
-		if ($this->debug) $this->debug(sprintf("Parsed replay.initData file in %d ms.",(microtime_float() - $start)*1000));
-
 		$file = $mpqfile->readFile("replay.attributes.events");
 		$start = microtime_float();		
 		if ($file !== false) {
@@ -87,6 +79,14 @@ class SC2Replay {
 		}
 		else if ($this->debug) $this->debug("Error reading the replay.attributes.events file");
 		if ($this->debug) $this->debug(sprintf("Parsed replay.attributes.events file in %d ms.",(microtime_float() - $start)*1000));
+		
+		$file = $mpqfile->readFile("replay.initData");
+		$start = microtime_float();
+		if ($file !== false) {
+			$this->parseInitDataFile($file);
+		}
+		else if ($this->debug) $this->debug("Error reading the replay.initData file");
+		if ($this->debug) $this->debug(sprintf("Parsed replay.initData file in %d ms.",(microtime_float() - $start)*1000));
 		
 		$num = 0;
 		$file = $mpqfile->readFile("replay.game.events");
@@ -151,7 +151,7 @@ class SC2Replay {
 			$nickLen = MPQFile::readByte($string,$numByte);
 			if ($nickLen > 0) {
 				$name = MPQFile::readBytes($string,$numByte,$nickLen);
-				$tmpArray[$i] = array( "name" => $name, "isObs" => TRUE, "id" => $i, "isComp" => FALSE, "team" => 0 ); // set initial values
+				$tmpArray[$i] = array("name" => $name, "isObs" => TRUE, "id" => $i, "isComp" => FALSE, "team" => 0, "sColor" => "", "difficulty" => ""); // set initial values
 				$numByte += 5;
 			} 
 			else {
@@ -201,11 +201,11 @@ class SC2Replay {
 		$i = $numPlayers;
 		foreach ($tmpArray as $player) {
 			if (in_array($player['name'],$playerNames)) continue;
+			while (isset($this->players[$i])) { $i--; }
 			$player['id'] = $i;
 			$this->players[$i] = $player;
 			$i--;
 		}
-		
 		$numByte += 4;
 		// player-specific data starts
 	}
@@ -213,7 +213,7 @@ class SC2Replay {
 	// $string contains the contents of the file
 	function parseDetailsFile($string) {
 		$numByte = 0;
-		$array = $this->parseDetailsValue($string,$numByte);
+		$array = MPQFile::parseSerializedData($string,$numByte);
 		$playerArray = $array[0];
 		foreach ($playerArray as $index => $player) {
 			$p = array();
@@ -236,81 +236,23 @@ class SC2Replay {
 			else 
 				$p["isComp"] = false;
 			$p["isObs"] = false;
+			$p["difficulty"] = "";
+			$p["sColor"] = "";
 			$this->players[$index + 1] = $p;
 		}
 		$this->mapName = $array[1];
 		$this->gameFiletime = $array[5];
 		$this->gameCtime = floor(($array[5] - 116444735995904000) / 10000000);
 	}
-	// a function that is recursively called to parse replay.details file
-	function parseDetailsValue($string, &$numByte) {
-		$dataType = MPQFile::readByte($string,$numByte);
-		switch ($dataType) {
-			case 0x02: // binary data
-				$dataLen = $this->parseVLFNumber($string,$numByte);
-				return MPQFile::readBytes($string,$numByte,$dataLen);
-				break;
-			case 0x04: // simple array
-				$array = array();
-				$numByte += 2; // skip 01 00
-				$numElements = $this->parseVLFNumber($string,$numByte);
-				while ($numElements > 0) {
-					$array[] = $this->parseDetailsValue($string,$numByte);
-					$numElements--;
-				}
-				return $array;
-				break;
-			case 0x05: // array with keys
-				$array = array();
-				$numElements = $this->parseVLFNumber($string,$numByte);
-				while ($numElements > 0) {
-					$index = $this->parseVLFNumber($string,$numByte);
-					$array[$index] = $this->parseDetailsValue($string,$numByte);
-					$numElements--;
-				}				
-				return $array;
-				break;
-			case 0x06: // number of one byte
-				return MPQFile::readByte($string,$numByte);
-				break;
-			case 0x07: // number of four bytes
-				return MPQFile::readUInt32($string,$numByte);
-				break;
-			case 0x09: // number in VLF
-				return $this->parseVLFNumber($string,$numByte);
-				break;
-			default:
-				if ($this->debug) $this->debug(sprintf("Unknown data type in function parseDetailsValue (%d)",$dataType));
-				return false;
-		}
-	}
-	
-	private function parseVLFNumber($string, &$numByte) {
-		$number = 0;
-		$first = true;
-		$multiplier = 1;
-		for ($i = MPQFile::readByte($string,$numByte),$bytes = 0;true;$i = MPQFile::readByte($string,$numByte),$bytes++) {
-			$number += ($i & 0x7F) * pow(2,$bytes * 7);
-			if ($first) {
-				if ($number & 1) {
-					$multiplier = -1;
-					$number--;
-				}
-				$first = false;
-			}
-			if (($i & 0x80) == 0) break;
-		}
-		$number *= $multiplier;
-		$number /= 2; // can't use right-shift because the datatype will be float for large values on 32-bit systems
-		return $number;
-	}
-	
+
 	// parameter is the contents of the replay.attributes.events file
 	private function parseAttributesFile($string) {
 		if ($this->debug) $this->debug("Parsing replay.attributes.events file");
 		$numByte = 4; // skip the 4-byte header
 		$numAttribs = MPQFile::readUInt32($string,$numByte);
 		$attribArray = array();
+		$difficulties = array("VyEy" => 0, "Easy" => 1, "Medi" => 2, "Hard" => 3, "VyHd" => 4, "Insa" => 5);
+		$gameSpeeds = array("Slor" => 0, "Slow" => 1, "Norm" => 2, "Fast" => 3, "Fasr" => 4);
 		for ($i = 0;$i < $numAttribs;$i++) {
 			$attribHeader = MPQFile::readUInt32($string,$numByte);
 			$attributeId = MPQFile::readUInt32($string,$numByte);
@@ -322,126 +264,67 @@ class SC2Replay {
 				if ($b != 0) $attribVal .= chr($b);
 			}
 			$numByte += 4;
-			$attribArray[$playerId][$attributeId] = $attribVal;
-			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d (%s), attribVal = \"%s\"",
-							$attributeId,$playerId,(($playerId == 0x10)?"ALL":$this->players[$playerId]["name"]),$attribVal));
-			switch ($attributeId) {
-				case 0x0BBB: // handicap
-					$this->players[$playerId]["handicap"] = $attribVal;
-					break;
-				case 0x0BBC: // difficulty level (of computer player, Medi for humans)
-					switch ($attribVal) {
-						case "Insa":
-							$tmp = 5;
-							break;
-						case "VyHd":
-							$tmp = 4;
-							break;
-						case "Hard":
-							$tmp = 3;
-							break;
-						case "Medi":
-							$tmp = 2;
-							break;
-						case "Easy":
-							$tmp = 1;
-							break;
-						case "VyEy":
-							$tmp = 0;
-							break;
-						default:
-							$tmp = 2;
-					}
-					$this->players[$playerId]["difficulty"] = $tmp;
-					break;
-				case 0x0BB8: // game speed
-					switch ($attribVal) {
-						case "Fasr":
-							$tmp = 4;
-							break;
-						case "Fast":
-							$tmp = 3;
-							break;
-						case "Norm":
-							$tmp = 2;
-							break;
-						case "Slow":
-							$tmp = 1;
-							break;
-						case "Slor":
-							$tmp = 0;
-							break;
-						default:
-							$tmp = 2;
-					}
-					$this->gameSpeed = $tmp;
-					break;
-				case 0x01F4: // player type, Humn or Comp
-					$this->players[$playerId]["ptype"] = $attribVal; // deprecated
-					$this->players[$playerId]["isComp"] = ($attribVal == 'Comp')?true:false;
-					//if ($attribVal == 'Open')
-					//$this->players[$playerId]["isObs"] = true;
-					break;
-				case 0x0BB9: // initial race, Prot Terr Zerg or RAND
-					$this->players[$playerId]["srace"] = $attribVal;
-					break;
-				case 0x07D1: // teamsizes
-					$this->teamSize = $attribVal;
-					break;
-				case 0x0BC1: // game type, private(Priv)/open(Amm)?
-					$this->gamePublic = (($attribVal == "Priv")?false:true);
-					break;
-				case 0x0BBA: // color index
-					$this->players[$playerId]["colorIndex"] = intval(substr($attribVal,2));
-					$this->players[$playerId]["sColor"] = self::$colorIndices[intval(substr($attribVal,2))];
-					break;
-				default:
-			}
+
+			$attribArray[$attributeId][$playerId] = $attribVal;
+			if ($this->debug) $this->debug(sprintf("Got attrib \"%04X\" for player %d, attribVal = \"%s\"",
+							$attributeId,$playerId,$attribVal));
 		}
-		switch ($attribArray[0x10][0x07D1]) {
-			case "1v1":
-				$attrib = 0x07D2;
-				break;
-			case "2v2":
-				$attrib = 0x07D3;
-				break;			
-			case "3v3":
-				$attrib = 0x07D4;
-				break;
-			case "4v4":
-				$attrib = 0x07D5;
-				break;
-			case "FFA":
-				$attrib = 0x07D6;
-				break;
+		// map the player ids to actual player ids
+		// assumes that the slots are populated from the lowest player id to highest player id
+		$tmpPlayerArray = array();
+		for ($i = 1,$playerId = 1;isset($attribArray[0x01F4][$i]);$i++) {
+			if ($attribArray[0x01F4][$i] == "Open") continue;
+			$tmpPlayerArray[$i] = $this->players[$playerId];
+			$tmpPlayerArray[$i]['id'] = $i;
+			$playerId++;
+		}
+		unset($this->players);
+		$this->players = $tmpPlayerArray;
+		$numSlots = $i;
+		if ($numAttribs == 0)
+			return;
+		// see which attribute id gives the correct team values
+		switch ($attribArray[0x07D1][0x10]) {
+			case "1v1": $teamAttrib = 0x07D2; break;
+			case "2v2": $teamAttrib = 0x07D3; break;			
+			case "3v3": $teamAttrib = 0x07D4; break;
+			case "4v4":	$teamAttrib = 0x07D5; break;
+			case "FFA":	$teamAttrib = 0x07D6; break;
 			default:
 				if ($this->debug) 
 					$this->debug(sprintf("Unknown game mode in replay.attributes.events: %s",$attribArray[0x10][0x07D1]));
-				return;
 		}
-		foreach ($attribArray as $playerId => $values) {
-			if ($playerId == 0x10) continue;
-			$this->players[$playerId]["team"] = intval(substr($values[$attrib],1));
+		// custom games have different values (not tested with all values, algorithm may be wrong)
+		switch ($attribArray[0x07D0][0x10]) {
+			case 'Cust': $teamAttrib = $teamAttrib + 0x10 - 1; break; // 0x7D3 becomes 0x7E2 etc.
+			default:
 		}
+		// populate the data structures with relevant values
+		for ($i = 1;$i < $numSlots;$i++) {
+			if (!isset($this->players[$i])) continue;
+			//$actualPlayerId = $playerIdArray[$i];
+			// handicap
+			$this->players[$i]["handicap"] = $attribArray[0x0BBB][$i];
+			// difficulty
+			$this->players[$i]["difficulty"] = $difficulties[$attribArray[0x0BBC][$i]];
+			// starting race
+			$this->players[$i]["srace"] = $attribArray[0x0BB9][$i];
+			// set player type
+			$this->players[$i]["isComp"] = ($attribArray[0x01F4][$i] == 'Comp')?true:false;
+			// set player colors
+			$this->players[$i]["colorIndex"] = intval(substr($attribArray[0x0BBA][$i],2));
+			$this->players[$i]["sColor"] = self::$colorIndices[intval(substr($attribArray[0x0BBA][$i],2))];
+			// set team
+			$this->players[$i]["team"] = intval(substr($attribArray[$teamAttrib][$i],1));
+		}
+		// set team size
+		$this->teamSize = $attribArray[0x07D1][0x10];
+		// game speed
+		$this->gameSpeed = $gameSpeeds[$attribArray[0x0BB8][0x10]];
+		// set game type
+		$this->gamePublic = (($attribArray[0x0BC1][0x10] == "Priv")?false:true);
 	}
 	
-	// parse a key/value -pair struct in the replay.details file
-	private function parseKeyVal($string, &$numByte) {
-		$one = unpack("C",substr($string,$numByte,1)); 
-		$one = $one[1];
-		$retVal = $one & 0x7F;
-		$shift = 1;
-		$numByte++;
-		while (($one & 0x80) > 0) {
-			$one = unpack("C",substr($string,$numByte,1)); 
-			$one = $one[1];
-			$retVal = (($one & 0x7F) << $shift*7) | $retVal;
-			$shift++;
-			$numByte++;
-		}
-		return $retVal;
-	}
-
 	private function readUnitTypeID($string,&$numByte) {
 		return ((MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte)));
 	}
@@ -473,7 +356,7 @@ class SC2Replay {
 		}
 		while ($numByte < $len) {
 			$timestamp = self::parseTimeStamp($string,$numByte);
-			$playerId = MPQFile::readByte($string,$numByte);
+			$playerId = MPQFile::readByte($string,$numByte) & 0x0F;
 			$opcode = MPQFile::readByte($string,$numByte);
 			$totTime += $timestamp;
 			if ($opcode == 0x80) { // header weird thingy?
@@ -498,7 +381,7 @@ class SC2Replay {
 		foreach ($recorderArray as $id => $bool) {
 			if ($bool) {
 				if ($recorderId > 0) { // found a second recorder, so something is clearly broken
-					$recorrderId = 0;
+					$recorderId = 0;
 					break;
 				}
 				else
@@ -543,6 +426,7 @@ class SC2Replay {
 			switch ($eventType) {
 				case 0x00: // initialization
 					switch ($eventCode) {
+						case 0x2B:
 						case 0x0B: // Player enters game
 							if ($playerId == 0)
 								$knownEvent = false;
@@ -645,8 +529,6 @@ class SC2Replay {
 							if ($reqTarget == 0x50)
 								$data .= MPQFile::readByte($string,$numByte);
 							// update apm array
-							$this->addPlayerAction($playerId, floor($time / 16));
-
 							$this->addPlayerAbility($playerId, ceil($time /16), $ability);
 							break;
 						case 0x2F: // player sends resources
@@ -1025,6 +907,8 @@ class SC2Replay {
 					}
 					break;
 				case 0x04: // inaction
+					if (($eventCode & 0x0F) == 2) { $numByte += 2; break; }
+					else if (($eventCode & 0x0C) == 2) break;
 					switch($eventCode) {
 						case 0x16:
 							$numByte += 24;
@@ -1037,22 +921,6 @@ class SC2Replay {
 							break;
 						case 0x87: //unknown
 							$numByte += 4;
-							break;
-						case 0x1C:
-						case 0x2C: // no data
-						case 0x3C:
-						case 0x4C:
-						case 0x5C:
-						case 0x6C:
-						case 0x7C:
-						case 0x8C:
-						case 0x9C:
-						case 0xAC:
-						case 0xBC:
-						case 0xCC:
-						case 0xDC:
-						case 0xEC:
-						case 0xFC:
 							break;
 						default:
 							$knownEvent = false;
@@ -1109,7 +977,7 @@ class SC2Replay {
 			if ($teamCounts[$i] > 0 && $tempWinnerTeam == 0) { $winnerKnown = true; $tempWinnerTeam = $i; } // initially set winner as known
 			else if ($teamCounts[$i] > 0 && $tempWinnerTeam > 0) { $winnerKnown = false; break; } // more than 1 team with 1 or more players left, winner undeterminable
 		}
-		if ($tempWinnerTeam == 0) { // this means that no team had more than 0 players left, so use the team of $lastLeaver
+		if ($tempWinnerTeam == 0 && $lastLeaver > 0) { // this means that no team had more than 0 players left, so use the team of $lastLeaver
 			$winnerKnown = true;
 			$tempWinnerTeam = $this->players[$lastLeaver]['team'];
 		}
@@ -1146,13 +1014,13 @@ class SC2Replay {
 	private function addPlayerAbility($playerId, $time, $abilitycode) {
 		if (!isset($this->players[$playerId]))
 			return;
-		$this->players[$playerId]['apmtotal']++;
 		if (isset($this->players[$playerId]['numevents'][$abilitycode]))
 			$this->players[$playerId]['numevents'][$abilitycode]++;
 		else {
 			$this->players[$playerId]['numevents'][$abilitycode] = 1;
 			$this->players[$playerId]['firstevents'][$abilitycode] = $time;
 		}
+		$this->addPlayerAction($playerId,$time);
 	}
 	static function parseTimeStamp($string, &$numByte) {
 		$one = MPQFile::readByte($string,$numByte);
@@ -1211,7 +1079,7 @@ class SC2Replay {
 			$this->debug("Class SC2ReplayUtils not found!");
 		return false;
 	}
-	function getAbilityArray($num) {
+/*	function getAbilityArray($num) {
 		if (class_exists('SC2ReplayUtils')) {
 			if ($this->build >= 16561) $array = SC2ReplayUtils::$ABILITYCODES_16561;
 			else $array = SC2ReplayUtils::$ABILITYCODES;
@@ -1230,17 +1098,31 @@ class SC2Replay {
 			$this->debug("Class SC2ReplayUtils not found!");
 		return false;
 	}
-  function getUnitArray($num) {
-    if(class_exists('SC2ReplayUtils')) {
-      if (isset(SC2ReplayUtils::$UNITCODES[$num]))
-        return SC2ReplayUtils::$UNITCODES[$num];
-      else if ($this->debug)
-        $this->debug(sprintf("Unknown unit code: %04X", $num));
-    }
-    else if($this->debug)
-      $this->debug("Class SC2ReplayUtils not found!");
-    return false;
-  }
+*/
+	function getAbilityArray($num) {
+		if (class_exists('SC2ReplayUtils')) {
+			$array = SC2ReplayUtils::getAbilityArray($num,$this->build);
+			
+			if (!$array && $this->debug)
+				$this->debug(sprintf("Unknown ability code: %06X",$num));
+			return $array;
+		}
+		else if ($this->debug)
+			$this->debug("Class SC2ReplayUtils not found!");
+		return false;
+	}
+	function getUnitArray($num) {
+		if (class_exists('SC2ReplayUtils')) {
+			$array = SC2ReplayUtils::getUnitArray($num,$this->build);
+			
+			if (!$array && $this->debug)
+				$this->debug(sprintf("Unknown unit code: %04X", $num));
+			return $array;
+		}
+		else if($this->debug)
+			$this->debug("Class SC2ReplayUtils not found!");
+		return false;
+	}
 }
 
 
