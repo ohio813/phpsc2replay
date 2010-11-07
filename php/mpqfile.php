@@ -186,7 +186,7 @@ class MPQFile {
 				
 				$this->verMajor = $userDataArray[1][1];
 				$this->build = $userDataArray[1][4];
-				$this->gameLen = ceil($userDataArray[3] / 32);
+				$this->gameLen = ceil($userDataArray[3] / 16);
 				$this->versionString = sprintf("%d.%d.%d.%d",$this->verMajor,
 															 $userDataArray[1][2],
 															 $userDataArray[1][3],
