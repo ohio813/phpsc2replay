@@ -199,6 +199,7 @@ if (isset($_FILES['userfile'])) {
 				$recorder = $b->getRecorder();
 				echo sprintf("Map name: %s, Game length: %s<br />\n",$b->getMapName(),$b->getFormattedGameLength());
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
+				echo sprintf("Real team size: %s<br />\n",$b->getRealTeamSize());
 				echo sprintf("Realm: %s<br />\n",$b->getRealm());
 				echo sprintf("Date and time played: %s<br />\n",date('jS \of F Y \a\t H:i' ,$b->getCtime()));
 				if ($recorder != null)
