@@ -255,8 +255,14 @@ if (isset($_FILES['userfile'])) {
 				}
 				echo $apmString;
 
-
-
+				$temp = $b->getUnits();
+				if (count($temp) > 0) {
+					echo "<table border=\"1\"><tr><th>Unit type</th><th>Unique unit IDs</th></tr>\n";
+					foreach ($temp['units'] as $uType => $uId) {	
+						echo sprintf("<tr><td>0x%06X</td><td>%d</td></tr>\n",$uType,count($uId));
+					}
+					echo "</table>";
+				}
 				
 				$t = $b->getEvents();
 				if (class_exists('SC2ReplayUtils')) {

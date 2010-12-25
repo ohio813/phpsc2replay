@@ -439,7 +439,7 @@ class SC2Replay {
 			$time += $timeStamp;
 			$numEvents++;
 
-			if ($playerId > count($this->players) || ($globalEventFlag > 0 && $playerId > 0))
+			if ($globalEventFlag > 0 && $playerId > 0)
 				$knownEvent = false;
 			else
 			switch ($eventType) {
@@ -1016,6 +1016,7 @@ class SC2Replay {
       $this->unitsDict[$playerId][$uId]['type'] = $uType;
       $this->unitsDict[$playerId][$uId]['firstSeen'] = $time;
     }
+	$this->unitsDict['units'][$uType][$uId] = true;
     $this->unitsDict[$playerId][$uId]['lastSeen'] = $time;
   }
 
