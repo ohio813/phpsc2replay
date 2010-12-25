@@ -938,6 +938,8 @@ class SC2Replay {
 						case 0x18:
 							$numByte += 4;
 							break;
+						case 0x1C:
+							break;
 						case 0x87: //unknown
 							$numByte += 4;
 							break;
