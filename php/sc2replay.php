@@ -95,7 +95,7 @@ class SC2Replay {
 		$start = microtime_float();	
 		if ($file !== false) $num = $this->parseGameEventsFile($file);
 		else if ($this->debug) $this->debug("Error reading the replay.game.events file");
-		if ($this->debug) $this->debug(sprintf("Parsed replay.game.events file in %d ms, found $num events.",(microtime_float() - $start)*1000));
+		if ($this->debug) $this->debug(sprintf("Parsed replay.game.events file in %d ms, found %d events.",(microtime_float() - $start)*1000, $num));
 		
 		$file = $mpqfile->readFile("replay.message.events");
 		$start = microtime_float();	
@@ -251,7 +251,7 @@ class SC2Replay {
 	// parameter is the contents of the replay.attributes.events file
 	private function parseAttributesFile($string) {
 		if ($this->debug) $this->debug("Parsing replay.attributes.events file");
-		$numByte = 4; // skip the 4-byte header
+		$numByte = 5; // skip the 4-byte header
 		$numAttribs = MPQFile::readUInt32($string,$numByte);
 		$attribArray = array();
 		$difficulties = array("VyEy" => 0, "Easy" => 1, "Medi" => 2, "Hard" => 3, "VyHd" => 4, "Insa" => 5);
@@ -446,7 +446,7 @@ class SC2Replay {
 				case 0x00: // initialization
 					switch ($eventCode) {
 						case 0x2B:
-						case 0x0B: // Player enters game
+						case 0x0C: // Player enters game
 							if ($playerId == 0)
 								$knownEvent = false;
 							break;
