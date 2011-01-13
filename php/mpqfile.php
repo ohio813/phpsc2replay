@@ -406,9 +406,7 @@ class MPQFile {
 			return false;
 		}
 		if (class_exists("SC2Replay") || (include 'sc2replay.php')) {
-			$tmp = new SC2Replay();
-			if ($this->debug) $tmp->setDebug($this->debug);
-			$tmp->parseReplay($this);
+		        $tmp = SC2Replay::makeReplay($this, $this->debug);
 			return $tmp;
 		}
 		else {
