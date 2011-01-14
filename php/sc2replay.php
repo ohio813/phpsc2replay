@@ -13,6 +13,9 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+
+require_once dirname(__FILE__) . "/sc2replayutils.php";
+
 abstract class SC2Replay {
   static function makeReplay($mpqfile, $debug = false) {
 	  if (!($mpqfile instanceof MPQFile) || !$mpqfile->isParsed()) return false;
@@ -1091,7 +1094,7 @@ abstract class SC2Replay {
 	// gets the literal string from the sc2_abilitycodes array based on the ability code
 	// returns false if the variable doesn't exist or the file cannot be included
 	function getAbilityString($num) {
-		if (class_exists('SC2ReplayUtils')) {
+		if (class_exists('SC2ReplayUtilsImpl')) {
 			if ($this->debug) $debug = sprintf(" (%06X)",$num);
 			else $debug = "";
 			$tmp = $this->getAbilityArray($num);
@@ -1106,7 +1109,7 @@ abstract class SC2Replay {
 			*/
 		}
 		else if ($this->debug)
-			$this->debug("Class SC2ReplayUtils not found!");
+			$this->debug("Class SC2ReplayUtilsImpl not found!");
 		return false;
 	}
 /*	function getAbilityArray($num) {
@@ -1130,15 +1133,15 @@ abstract class SC2Replay {
 	}
 */
 	function getAbilityArray($num) {
-		if (class_exists('SC2ReplayUtils')) {
-			$array = SC2ReplayUtils::getAbilityArray($num,$this->build);
+		if (class_exists('SC2ReplayUtilsImpl')) {
+			$array = SC2ReplayUtilsImpl::getAbilityArray($num,$this->build);
 			
 			if (!$array && $this->debug)
 				$this->debug(sprintf("Unknown ability code: %06X",$num));
 			return $array;
 		}
 		else if ($this->debug)
-			$this->debug("Class SC2ReplayUtils not found!");
+			$this->debug("Class SC2ReplayUtilsImpl not found!");
 		return false;
 	}
 	function getUnitArray($num) {

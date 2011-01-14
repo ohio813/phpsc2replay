@@ -13,6 +13,9 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+
+require_once dirname(__FILE__) . "/sc2replayutils.php";
+
 class SC2ReplayImpl extends SC2Replay {
 	
 	function __construct() {
@@ -29,7 +32,7 @@ class SC2ReplayImpl extends SC2Replay {
 		$this->mapHash = null;
 		$this->recorderId = 0;
 	}
-
+	
 	// All other functions use the default implementation from base class
 }
 
