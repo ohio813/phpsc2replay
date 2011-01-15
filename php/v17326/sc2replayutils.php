@@ -334,7 +334,7 @@ class SC2ReplayUtilsImpl extends SC2ReplayUtils {
 					    0x012901 => 'gather',
 					    0x002A20 => 'attack',
 					    0x002A10 => 'attack',
-					    0x002811 => 'patrol',
+					    0x002611 => 'patrol',
 					    0x002810 => 'move',
 					    0x002400 => 'stop',
 					    0x002602 => 'attack',
