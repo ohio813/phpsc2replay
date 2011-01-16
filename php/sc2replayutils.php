@@ -1013,7 +1013,7 @@ class SC2ReplayUtils {
 		       if ($build >= 17326) {
 			 if ($num > 0x012c00) {
 			   $num -= 0x200;
-			 } elseif ($num > 0x00300) {
+			 } elseif ($num > 0x002900) {
 			   $num -= 0x100;
 			 }
 			 $array = self::$ABILITYCODES_16561;
