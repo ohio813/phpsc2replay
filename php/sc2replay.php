@@ -252,6 +252,7 @@ class SC2Replay {
 	private function parseAttributesFile($string) {
 		if ($this->debug) $this->debug("Parsing replay.attributes.events file");
 		$numByte = 4; // skip the 4-byte header
+		if ($this->build >= 17326) $numByte += 1; // 1 additional byte for these builds
 		$numAttribs = MPQFile::readUInt32($string,$numByte);
 		$attribArray = array();
 		$difficulties = array("VyEy" => 0, "Easy" => 1, "Medi" => 2, "Hard" => 3, "VyHd" => 4, "Insa" => 5);
@@ -446,6 +447,7 @@ class SC2Replay {
 				case 0x00: // initialization
 					switch ($eventCode) {
 						case 0x2B:
+					        case 0x0C: // for build >= 17326
 						case 0x0B: // Player enters game
 							if ($playerId == 0)
 								$knownEvent = false;
