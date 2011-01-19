@@ -1,4 +1,4 @@
-﻿<?php
+<?php
 /*
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -361,11 +361,13 @@ class SC2ReplayUtils {
 	public static $ABILITYCODES_16561 = array(
 		// terran 
 		0x020A00 => array('link' => 0x080A00),
+		0x011810 => array('link' => 0x050800), // rally point with action (gather, repair, etc)
 		0x011820 => array('link' => 0x050800),
 		0x013011 => array('link' => 0x070001),
 		0x013013 => array('link' => 0x070003),
 		0x013022 => array('link' => 0x070002),
 		0x011610 => array('link' => 0x050600),
+		0x011620 => array('link' => 0x050600), // rally point with action (gather, load into bunker, etc)
 		0x020E00 => array('link' => 0x080E00),
 		0x031200 => array('link' => 0x0D0300),
 		0x020200 => array('link' => 0x080200),
@@ -581,6 +583,8 @@ class SC2ReplayUtils {
 		0x011C20 => array('link' => 0x050C00),
 		
 		//protoss
+		0x011A10 => array('link' => 0x050900),
+		0x011A20 => array('link' => 0x050900), // rally point with action
 		0x021E00 => array('link' => 0x090E00),
 		0x021911 => array('link' => 0x090901),
 		0x021922 => array('link' => 0x090902),
