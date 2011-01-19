@@ -303,7 +303,7 @@ class SC2Replay {
 		}
 		// custom games have different values (not tested with all values, algorithm may be wrong)
 		switch ($attribArray[0x07D0][0x10]) {
-			case 'Cust': $teamAttrib = $teamAttrib + 0x10 - 1; break; // 0x7D3 becomes 0x7E2 etc.
+			case 'Cust': if ($attribArray[0x03E9][0x10] == 'no') $teamAttrib += 0x10; break; // 0x7D3 -> 0x7E3 etc.
 			default:
 		}
 		// populate the data structures with relevant values
