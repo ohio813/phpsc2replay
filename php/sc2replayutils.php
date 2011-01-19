@@ -566,6 +566,8 @@ class SC2ReplayUtils {
 		0x030212 => array('link' => 0x0C0202),
 		0x031000 => array('desc' => 'uses Burrow (Ultralisk)', 'name' => 'Burrow (Ultralisk)', 'type' => SC2_TYPEABILITY),
 		0x031100 => array('desc' => 'uses Unburrow (Ultralisk)', 'name' => 'Unburrow (Ultralisk)', 'type' => SC2_TYPEABILITY),
+		0x030600 => array('link' => 0x0C0600),
+		0x030700 => array('link' => 0x0C0700),
 		0x030A00 => array('link' => 0x0C0A00),
 		0x030B00 => array('link' => 0x0C0B00),
 		0x023400 => array('link' => 0x0B0400),
@@ -581,6 +583,7 @@ class SC2ReplayUtils {
 		0x023300 => array('link' => 0x0B0300),
 		0x003400 => array('link' => 0x030400),
 		0x011C20 => array('link' => 0x050C00),
+		0x03F806 => array('desc' => 'cancels build in progress (Creep tumor)', 'name' => 'cancel (Creep tumor)', 'type' => SC2_TYPEABILITY, 'subtype' => SC2_SUBTYPECANCEL),
 		
 		//protoss
 		0x011A10 => array('link' => 0x050900),
@@ -687,6 +690,7 @@ class SC2ReplayUtils {
 		0x002610 => array('link' => 0x020600),
 		0x002400 => array('link' => 0x020400),
 		0x002602 => array('link' => 0x020900),
+		0x002613 => array('desc' => 'scan moves (attack)', 'name' => 'scan move', 'type' => SC2_TYPEGEN),
 		0x022701 => array('desc' => 'returns cargo', 'name' => 'return cargo', 'type' => SC2_TYPEGEN),
 		0x01F006 => array('desc' => 'continues construction', 'name' => 'construct', 'type' => SC2_TYPEGEN)
 	);
