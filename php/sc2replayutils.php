@@ -399,7 +399,7 @@ class SC2ReplayUtils {
 		0x020910 => array('link' => 0x080900),
 		0x020300 => array('link' => 0x080300),
 		0x020B10 => array('link' => 0x080B00),
-		0x012F00 => array('link' => 0x080A00), // scv autorepair
+		0x012F00 => array('desc' => 'toggles auto-repair (SCV)', 'name' => 'autorepair (SCV)', 'type' => SC2_TYPEGEN), // scv autorepair
 		0x010A20 => array('link' => 0x040A00),
 		0x010A10 => array('link' => 0x040A00), // MULE not on mineral patch
 		0x030D01 => array('link' => 0x060D01),
@@ -458,6 +458,7 @@ class SC2ReplayUtils {
 		0x020F05 => array('link' => 0x080F05),
 		0x020F01 => array('link' => 0x080F01),
 		0x020F04 => array('link' => 0x080F04),
+		0x013500 => array('desc' => 'toggles auto-heal (Medivac)', 'name' => 'autoheal (Medivac)', 'type' => SC2_TYPEGEN),
 		0x013600 => array('link' => 0x070600),
 		0x013700 => array('link' => 0x070700),
 		0x033910 => array('link' => 0x0F0A00),
