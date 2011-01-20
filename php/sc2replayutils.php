@@ -402,6 +402,7 @@ class SC2ReplayUtils {
 		0x012F00 => array('link' => 0x080A00), // scv autorepair
 		0x010A20 => array('link' => 0x040A00),
 		0x010A10 => array('link' => 0x040A00), // MULE not on mineral patch
+		0x030D01 => array('link' => 0x060D01),
 		0x012120 => array('link' => 0x060100), 
 		0x013A10 => array('link' => 0x070A00), 
 		0x020E02 => array('link' => 0x080E02),
