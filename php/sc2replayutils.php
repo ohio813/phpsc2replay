@@ -362,6 +362,8 @@ class SC2ReplayUtils {
 		// terran 
 		0x020A00 => array('link' => 0x080A00),
 		0x011810 => array('link' => 0x050800), // rally point with action (gather, repair, etc)
+		0x01FE01 => array('link' => 0x070E01),
+		0x01FE03 => array('link' => 0x070E03),
 		0x011820 => array('link' => 0x050800),
 		0x013011 => array('link' => 0x070001),
 		0x013013 => array('link' => 0x070003),
@@ -399,6 +401,7 @@ class SC2ReplayUtils {
 		0x020B10 => array('link' => 0x080B00),
 		0x012F00 => array('link' => 0x080A00), // scv autorepair
 		0x010A20 => array('link' => 0x040A00),
+		0x010A10 => array('link' => 0x040A00), // MULE not on mineral patch
 		0x012120 => array('link' => 0x060100), 
 		0x013A10 => array('link' => 0x070A00), 
 		0x020E02 => array('link' => 0x080E02),
@@ -411,6 +414,8 @@ class SC2ReplayUtils {
 		0x021400 => array('link' => 0x090400),
 		0x021402 => array('link' => 0x090402),
 		0x021203 => array('link' => 0x090203),
+		0x01FF04 => array('link' => 0x070F04),
+		0x01FF01 => array('link' => 0x070F01),
 		0x020000 => array('link' => 0x080000),
 		0x020110 => array('link' => 0x080100),
 		0x021501 => array('link' => 0x090501),
