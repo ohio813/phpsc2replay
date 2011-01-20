@@ -590,6 +590,9 @@ class SC2ReplayUtils {
 		0x003400 => array('link' => 0x030400),
 		0x011C20 => array('link' => 0x050C00),
 		0x03F806 => array('desc' => 'cancels build in progress (Creep tumor)', 'name' => 'cancel (Creep tumor)', 'type' => SC2_TYPEABILITY, 'subtype' => SC2_SUBTYPECANCEL),
+		0x012A00 => array('desc' => 'cancels morph in progress', 'name' => 'cancel morph', 'type' => SC2_TYPEABILITY, 'subtype' => SC2_SUBTYPECANCEL),
+		0x030C01 => array('desc' => 'cancels morph in progress (Overseer)', 'name' => 'cancel (Overseer)', 'type' => SC2_TYPEABILITY, 'subtype' => SC2_SUBTYPECANCEL),
+		0x023101 => array('desc' => 'cancels morph in progress (Brood Lord)', 'name' => 'cancel (Brood Lord)', 'type' => SC2_TYPEABILITY, 'subtype' => SC2_SUBTYPECANCEL),
 		
 		//protoss
 		0x011A10 => array('link' => 0x050900),
