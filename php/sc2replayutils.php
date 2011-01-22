@@ -385,9 +385,13 @@ class SC2ReplayUtils {
 		0x017015 => array('link' => 0x07000D),
 		0x013010 => array('link' => 0x070000),
 		0x020400 => array('link' => 0x080400),
+		0x020410 => array('link' => 0x080400), // while floating
 		0x020401 => array('link' => 0x080401),
+		0x020411 => array('link' => 0x080401), // while floating
 		0x020600 => array('link' => 0x080600),
+		0x020610 => array('link' => 0x080600), // while floating
 		0x020601 => array('link' => 0x080601),
+		0x020611 => array('link' => 0x080601), // while floating
 		0x013014 => array('link' => 0x070004),
 		0x030D00 => array('link' => 0x0C0D00),
 		0x013016 => array('link' => 0x070006),
