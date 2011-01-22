@@ -488,6 +488,7 @@ class SC2ReplayUtils {
 		0x013920 => array('link' => 0x070900),
 		0x370003 => array('link' => 0x070903),
 		0x013912 => array('link' => 0x070902),
+		0x013922 => array('link' => 0x070902),
 		0x013C00 => array('link' => 0x070C00),
 		0x013D00 => array('link' => 0x070D00),
 		0x012B00 => array('link' => 0x0D0301),
