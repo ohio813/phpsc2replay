@@ -363,6 +363,7 @@ class SC2ReplayUtils {
 		0x020A00 => array('link' => 0x080A00),
 		0x011810 => array('link' => 0x050800), // rally point with action (gather, repair, etc)
 		0x01FE01 => array('link' => 0x070E01),
+		0x013E01 => array('link' => 0x070E01),
 		0x01FE03 => array('link' => 0x070E03),
 		0x011820 => array('link' => 0x050800),
 		0x013011 => array('link' => 0x070001),
