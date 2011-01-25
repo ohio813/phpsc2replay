@@ -457,12 +457,6 @@ class SC2Replay {
 							if ($globalEventFlag == 0 || $playerId > 0)
 								$knownEvent = false;
 							break;
-						// the following only encountered once right after player joined game,
-						// with the following data:
-						// 08 00 00 6e 03
-						case 0xD3:
-							$numByte += 5;
-							break;
 						default:
 							$knownEvent = false;
 					}
@@ -891,8 +885,22 @@ class SC2Replay {
 						case 0x87:
 							$numByte += 8;
 							break;
+						// 64 d4 6b a4 b5 48 4d ff 43 fa 56 8d 67 1a 15 88 0f 04 00 00 00 00 00 00 00 00 00 00 6e 03 00 00 00 00
+						// c2 b6 c4 06             4d fa 56 8d 07             02 00 01 d3 08             00 00 6e 03
+						// the next event code format is based on the previous two lines, may be faulty
+						// the purpose is unknown
 						case 0x08:
-							$numByte += 10;
+							$numByte += 3;
+							$nextByte = MPQFile::readByte($string,$numByte);
+							if (($nextByte & 0xF0) > 0) $numByte += 4;
+							
+							$numByte += 4;
+							$nextByte = MPQFile::readByte($string,$numByte);
+							if (($nextByte & 0xF0) > 0) $numByte += 4;
+
+							$nextByte = MPQFile::readByte($string,$numByte);
+							$numByte += (($nextByte & 0x0F) * 4);
+							// $numByte += 10;
 							break;
 						case 0x18:
 							$numByte += 162;
