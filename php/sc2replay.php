@@ -457,6 +457,12 @@ class SC2Replay {
 							if ($globalEventFlag == 0 || $playerId > 0)
 								$knownEvent = false;
 							break;
+						// the following only encountered once right after player joined game,
+						// with the following data:
+						// 08 00 00 6e 03
+						case 0xD3:
+							$numByte += 5;
+							break;
 						default:
 							$knownEvent = false;
 					}
