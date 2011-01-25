@@ -494,17 +494,18 @@ class SC2Replay {
 									$numByte += 7;
 								else if ($temp == 0x88 || $temp == 0x8A)
 									$numByte += 15;
+								
+								// the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
 								if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
-									switch ($ability) {
-										case 0x020A00: //SCV
-											$this->players[$playerId]['race'] = "Terran";
-											break;
-										case 0x021E00: //probe
-											$this->players[$playerId]['race'] = "Protoss";
-											break;										
-										case 0x023000: //drone
-											$this->players[$playerId]['race'] = "Zerg";
-											break;
+									if ($this->build >= 17326) {
+										if ($ability == 0x020C00) $this->players[$playerId]['race'] = "Terran";
+										elseif ($ability == 0x022000) $this->players[$playerId]['race'] = "Protoss";
+										elseif ($ability == 0x023200) $this->players[$playerId]['race'] = "Zerg";
+									}
+									else {
+										if ($ability == 0x020A00) $this->players[$playerId]['race'] = "Terran";
+										elseif ($ability == 0x021E00) $this->players[$playerId]['race'] = "Protoss";
+										elseif ($ability == 0x023000) $this->players[$playerId]['race'] = "Zerg";
 									}
 								}
 								if ($temp & 0x20) {
@@ -518,7 +519,7 @@ class SC2Replay {
 									
 								break;
 							}
-							// at least 32 bytes
+							// the following section is only reached for builds pre-16561							
 							$data = MPQFile::readBytes($string,$numByte,32);
 							$reqTarget = unpack("C",substr($data,7,1));
 							$reqTarget = $reqTarget[1];
@@ -931,6 +932,7 @@ class SC2Replay {
 				case 0x04: // inaction
 					if (($eventCode & 0x0F) == 2) { $numByte += 2; break; }
 					else if (($eventCode & 0x0C) == 2) break;
+					else if (($eventCode & 0x0C) == 0x0C) break; // at least 0x1C, 0x3C, 0x4C and 0x7C have been observed
 					switch($eventCode) {
 						case 0x16:
 							$numByte += 24;
@@ -941,10 +943,6 @@ class SC2Replay {
 						case 0x18:
 							$numByte += 4;
 							break;
-						case 0x1C:
-							break;
-     					        case 0x3C: //well what do you know.. this is unknown, too
-						        break;
 						case 0x87: //unknown
 							$numByte += 4;
 							break;

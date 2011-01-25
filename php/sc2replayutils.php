@@ -1036,16 +1036,16 @@ class SC2ReplayUtils {
 	// return false if the ability code is unknown
 	static function getAbilityArray($num, $build) {
 		while ($build > 0) {
-		       if ($build >= 17326) {
-			 if ($num > 0x012c00) {
-			   $num -= 0x200;
-			 } elseif ($num > 0x002900) {
-			   $num -= 0x100;
-			 }
-			 $array = self::$ABILITYCODES_16561;
+		    if ($build >= 17326) {
+				if ($num > 0x012c00) {
+					$num -= 0x200;
+				} elseif ($num > 0x002900) {
+					$num -= 0x100;
+				}
+				$array = self::$ABILITYCODES_16561;
 				$build = 16560;
-		       }
-		       elseif ($build >= 16561) {
+	        }
+	        elseif ($build >= 16561) {
 				$array = self::$ABILITYCODES_16561;
 				$build = 16560;
 			}

@@ -85,21 +85,41 @@ class MPQFile {
 	function setDebug($bool) { $this->debug = $bool; }
 	
 	static function readByte($string, &$numByte) {
+		// the following checks that there are enough bytes left in the string
+		if ($numByte >= strlen($string)) { 
+			if ($this->debug) $this->debug("Not enough bytes to read at byte offset $numByte");
+			return false;
+		}
 		$tmp = unpack("C",substr($string,$numByte,1));
 		$numByte++;
 		return $tmp[1];
 	}
 	static function readBytes($string, &$numByte, $length) {
+		// the following checks that there are enough bytes left in the string
+		if (strlen($string) - $numByte - $length < 0) { 
+			if ($this->debug) $this->debug("Not enough bytes to read at byte offset $numByte");
+			return false;
+		}
 		$tmp = substr($string,$numByte,$length);
 		$numByte += $length;
 		return $tmp;
 	}
 	static function readUInt16($string, &$numByte) {
+		// the following checks that there are enough bytes left in the string
+		if (strlen($string) - $numByte - 2 < 0) { 
+			if ($this->debug) $this->debug("Not enough bytes to read at byte offset $numByte");
+			return false;
+		}
 		$tmp = unpack("v",substr($string,$numByte,2));
 		$numByte += 2;
 		return $tmp[1];
 	}
 	static function readUInt32($string, &$numByte) {
+		// the following checks that there are enough bytes left in the string
+		if (strlen($string) - $numByte - 4 < 0) { 
+			if ($this->debug) $this->debug("Not enough bytes to read at byte offset $numByte");
+			return false;
+		}
 		$tmp = unpack("V",substr($string,$numByte,4));
 		$numByte += 4;
 		return $tmp[1];
