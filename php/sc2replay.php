@@ -486,8 +486,11 @@ class SC2Replay {
 									if ($nByte > 0x07) {
 										if ($firstByte == 0x29 || $firstByte == 0x19) { $numByte += 4; break; }
 										$numByte += 9;
-										if (($nByte & 0x20) > 0)
-											$numByte += 9;
+										if (($nByte & 0x20) > 0) {
+											$numByte += 8;
+											$nByte = MPQFile::readByte($string,$numByte);
+											if ($nByte & 8) $numByte += 4;
+										}
 									}
 								}
 								else if ($temp == 0x48 || $temp == 0x4A)
@@ -874,6 +877,7 @@ class SC2Replay {
 							$numByte += 8; // 00 00 00 04 00 00 00 04
 							break;
 						case 0x07:
+						case 0x0e:
 							$numByte += 4;
 							break;
 						default:
