@@ -123,6 +123,19 @@ class SC2Replay {
 	function getCtime() { return $this->gameCtime; }
 	function getFiletime() { return $this->gameFiletime; }
 	function getRecorder() { if ($this->recorderId == 0) return null; return $this->players[$this->recorderId]; }
+        
+        function jsonify() { 
+          if (extension_loaded('json')) {
+            $json = array(); 
+            foreach ($this as $key => $value) { 
+              $json[$key] = $value; 
+            }; 
+            return json_encode($json, JSON_FORCE_OBJECT); 
+          } else {
+            return "{}";
+          }
+        }
+
 	// getFormattedGameLength returns the time in h hrs, m mins, s secs 
 	function getFormattedGameLength() {
 		return $this->getFormattedSecs($this->gameLength);
