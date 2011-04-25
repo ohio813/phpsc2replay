@@ -490,86 +490,8 @@ class SC2Replay {
 						case 0x8B:
 						case 0x9B:
 						case 0x0B: // player uses an ability
-							if ($this->build >= 16561) {
-								$firstByte = MPQFile::readByte($string,$numByte);
-								$temp = MPQFile::readByte($string,$numByte);
-								$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte) & 0x3F);
-								if ($temp == 0x20 || $temp == 0x22) {
-									$nByte = $ability & 0xFF;
-									if ($nByte > 0x07) {
-										if ($firstByte == 0x29 || $firstByte == 0x19) { $numByte += 4; break; }
-										$numByte += 9;
-										if (($nByte & 0x20) > 0) {
-											$numByte += 8;
-											$nByte = MPQFile::readByte($string,$numByte);
-											if ($nByte & 8) $numByte += 4;
-										}
-									}
-								}
-								else if ($temp == 0x48 || $temp == 0x4A)
-									$numByte += 7;
-								else if ($temp == 0x88 || $temp == 0x8A)
-									$numByte += 15;
-								
-								// the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
-								if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
-									if ($this->build >= 17326) {
-										if ($ability == 0x020C00) $this->players[$playerId]['race'] = "Terran";
-										elseif ($ability == 0x022000) $this->players[$playerId]['race'] = "Protoss";
-										elseif ($ability == 0x023200) $this->players[$playerId]['race'] = "Zerg";
-									}
-									else {
-										if ($ability == 0x020A00) $this->players[$playerId]['race'] = "Terran";
-										elseif ($ability == 0x021E00) $this->players[$playerId]['race'] = "Protoss";
-										elseif ($ability == 0x023000) $this->players[$playerId]['race'] = "Zerg";
-									}
-								}
-								if ($temp & 0x20) {
-									$this->addPlayerAbility($playerId, ceil($time /16), $ability);
-									$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
-									$this->events = $events;
-								}
-								
-								if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),$ability));
-								$this->addPlayerAction($playerId, floor($time / 16));
-									
-								break;
-							}
-							// the following section is only reached for builds pre-16561							
-							$data = MPQFile::readBytes($string,$numByte,32);
-							$reqTarget = unpack("C",substr($data,7,1));
-							$reqTarget = $reqTarget[1];
-							$ability = $this->readUnitAbility($data);
-							if ($ability != 0xFFFF0F) {
-								$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
-								$this->events = $events;
-								// populate non-locale-specific race strings based on worker type
-								if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
-									switch ($ability) {
-										case 0x080A00: //SCV
-											$this->players[$playerId]['race'] = "Terran";
-											break;
-										case 0x090E00: //probe
-											$this->players[$playerId]['race'] = "Protoss";
-											break;										
-										case 0x0B0000: //drone
-											$this->players[$playerId]['race'] = "Zerg";
-											break;
-									}
-								}
-								
-							}
-							// at least with attack, move, right-click, if the byte after unit ability bytes is 
-							// 0x30 or 0x50, the struct takes 1 extra byte. With build orders the struct seems to be 32 bytes
-							// and this byte is 0x00.
-							// might also be in some other way variable-length.
-							if ($reqTarget == 0x30) 
-								$data .= MPQFile::readByte($string,$numByte); 
-							if ($reqTarget == 0x50)
-								$data .= MPQFile::readByte($string,$numByte);
-							// update apm array
-							$this->addPlayerAbility($playerId, ceil($time /16), $ability);
-							break;
+                                                  $this->parsePlayerEvent($string, $numByte, $playerId, $time, $events);
+                                                  break;
 						case 0x2F: // player sends resources
 							$numByte += 17; // data is 17 bytes long
 							break;
@@ -1045,6 +967,93 @@ class SC2Replay {
 		}
 		return $numEvents;
 	}
+
+        private function parsePlayerEvent($string, &$numByte, $playerId, $time, &$events) {
+          if ($this->build < 16561) {
+            return $this->oldParsePlayerEvent($string, $numByte, $playerId, $time, $events);
+          }
+
+          $firstByte = MPQFile::readByte($string,$numByte);
+          $temp = MPQFile::readByte($string,$numByte);
+          $ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte) & 0x3F);
+          if ($temp == 0x20 || $temp == 0x22) {
+            $nByte = $ability & 0xFF;
+            if ($nByte > 0x07) {
+              if ($firstByte == 0x29 || $firstByte == 0x19) { $numByte += 4; return; }
+              $numByte += 9;
+              if (($nByte & 0x20) > 0) {
+                $numByte += 8;
+                $nByte = MPQFile::readByte($string,$numByte);
+                if ($nByte & 8) $numByte += 4;
+              }
+            }
+          }
+          else if ($temp == 0x48 || $temp == 0x4A)
+            $numByte += 7;
+          else if ($temp == 0x88 || $temp == 0x8A)
+            $numByte += 15;
+          
+          // the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
+          if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
+            if ($this->build >= 17326) {
+              if ($ability == 0x020C00) $this->players[$playerId]['race'] = "Terran";
+              elseif ($ability == 0x022000) $this->players[$playerId]['race'] = "Protoss";
+              elseif ($ability == 0x023200) $this->players[$playerId]['race'] = "Zerg";
+            }
+            else {
+              if ($ability == 0x020A00) $this->players[$playerId]['race'] = "Terran";
+              elseif ($ability == 0x021E00) $this->players[$playerId]['race'] = "Protoss";
+              elseif ($ability == 0x023000) $this->players[$playerId]['race'] = "Zerg";
+            }
+          }
+          if ($temp & 0x20) {
+            $this->addPlayerAbility($playerId, ceil($time /16), $ability);
+            $events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
+            $this->events = $events;
+          }
+          
+          if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),$ability));
+          $this->addPlayerAction($playerId, floor($time / 16));
+        }
+  
+        private function oldParsePlayerEvent($string, &$numByte, $playerId, $time, &$events) {
+          // the following section is only reached for builds pre-16561							
+          $data = MPQFile::readBytes($string,$numByte,32);
+          $reqTarget = unpack("C",substr($data,7,1));
+          $reqTarget = $reqTarget[1];
+          $ability = $this->readUnitAbility($data);
+          if ($ability != 0xFFFF0F) {
+            $events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
+            $this->events = $events;
+            // populate non-locale-specific race strings based on worker type
+            if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
+              switch ($ability) {
+              case 0x080A00: //SCV
+                $this->players[$playerId]['race'] = "Terran";
+                break;
+              case 0x090E00: //probe
+                $this->players[$playerId]['race'] = "Protoss";
+                break;										
+              case 0x0B0000: //drone
+                $this->players[$playerId]['race'] = "Zerg";
+                break;
+              }
+            }
+            
+          }
+          // at least with attack, move, right-click, if the byte after unit ability bytes is 
+          // 0x30 or 0x50, the struct takes 1 extra byte. With build orders the struct seems to be 32 bytes
+          // and this byte is 0x00.
+          // might also be in some other way variable-length.
+          if ($reqTarget == 0x30) 
+            $data .= MPQFile::readByte($string,$numByte); 
+          if ($reqTarget == 0x50)
+            $data .= MPQFile::readByte($string,$numByte);
+          // update apm array
+          $this->addPlayerAbility($playerId, ceil($time /16), $ability);
+
+        }
+        
   // inserts unit into the unit dictionary and updates $time seen
   private function addSelectedUnit($uId, $uType, $playerId, $time){
     if(!isset($this->unitsDict[$playerId][$uId])){
