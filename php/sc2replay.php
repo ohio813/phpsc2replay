@@ -490,8 +490,8 @@ class SC2Replay {
 						case 0x8B:
 						case 0x9B:
 						case 0x0B: // player uses an ability
-                                                  $this->parsePlayerEvent($string, $numByte, $playerId, $time, $events);
-                                                  break;
+              $this->parsePlayerEvent($string, $numByte, $playerId, $time, $events);
+              break;
 						case 0x2F: // player sends resources
 							$numByte += 17; // data is 17 bytes long
 							break;
@@ -972,48 +972,83 @@ class SC2Replay {
           if ($this->build < 16561) {
             return $this->oldParsePlayerEvent($string, $numByte, $playerId, $time, $events);
           }
+          include_once 'buffer.php';
+          $buf = new ByteBuffer(substr($string, $numByte, strlen($string)-$numByte+1));
+          $flags = $buf->readByte();
+          $type = $buf->readByte();
+          $event = array('p' => $playerId, 't' => $time);
 
-          $firstByte = MPQFile::readByte($string,$numByte);
-          $temp = MPQFile::readByte($string,$numByte);
-          $ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte) & 0x3F);
-          if ($temp == 0x20 || $temp == 0x22) {
-            $nByte = $ability & 0xFF;
-            if ($nByte > 0x07) {
-              if ($firstByte == 0x29 || $firstByte == 0x19) { $numByte += 4; return; }
-              $numByte += 9;
-              if (($nByte & 0x20) > 0) {
-                $numByte += 8;
-                $nByte = MPQFile::readByte($string,$numByte);
-                if ($nByte & 8) $numByte += 4;
+          if ($type & 0x20) { //command card ability
+
+            $ability = $buf->readByte() << 8 | $buf->readByte();
+            if ($flags == 0x29 || $flags == 0x19) { // cancel?
+              $ability = $ability << 8 | $buf->readByte();
+              $event['o'] = $buf->readObjectId();
+            } else {
+              $abilityFlags = $buf->shift(6);
+              $ability = $ability << 8 | $abilityFlags;
+              if ($abilityFlags & 0x10) { // location attached
+                $x = $buf->readCoordinate();
+                $y = $buf->readCoordinate();
+                
+                $buf->skip(4);
+
+                $event['l'] = array('x' => $x, 'y' => $y);
+              } else if ($abilityFlags & 0x20) { // unit attached
+
+                $buf->readShort(); // code?
+                $objId = $buf->readObjectId();
+                $objTy = $buf->readObjectType();
+                $buf->skip(10);
+
+                $event['u'] = $objTy << 8 | 1; //TODO
+                $event['o'] = $objId;
+              } else if ($abilityFlags & 0x30) { // both?
+              } else {
+                //$this->debug('Unknown ability: ' . $ability);
+              }
+              
+            }
+            $event['a'] = $ability;
+            $this->addPlayerAbility($playerId, ceil($time /16), $ability);
+          } else if ($type & 0x40) { // has target location, mostly right clicks
+            $location = array('x' => $buf->readCoordinate(), 'y' => $buf->readCoordinate());
+            $buf->skip(5);
+
+            $event['a'] = 0x3700; // code for right click
+            $event['l'] = $location;
+          } else if ($type & 0x80) { // has target unit, also right clicks
+            $ability = $buf->readByte() << 8 | $buf->readByte();
+            $objId = $buf->readObjectId();
+            $objTy = $buf->readObjectType();
+            $buf->skip(10);
+
+            $event['a'] = $ability;
+            $event['u'] = $objTy << 8 | 1; // TODO
+            $event['o'] = $objId;
+          }
+          
+          if (isset($ability)) {
+            // the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
+            if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
+              if ($this->build >= 17326) {
+                if ($ability == 0x020C00) $this->players[$playerId]['race'] = "Terran";
+                elseif ($ability == 0x022000) $this->players[$playerId]['race'] = "Protoss";
+                elseif ($ability == 0x023200) $this->players[$playerId]['race'] = "Zerg";
+              }
+              else {
+                if ($ability == 0x020A00) $this->players[$playerId]['race'] = "Terran";
+                elseif ($ability == 0x021E00) $this->players[$playerId]['race'] = "Protoss";
+                elseif ($ability == 0x023000) $this->players[$playerId]['race'] = "Zerg";
               }
             }
           }
-          else if ($temp == 0x48 || $temp == 0x4A)
-            $numByte += 7;
-          else if ($temp == 0x88 || $temp == 0x8A)
-            $numByte += 15;
-          
-          // the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
-          if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
-            if ($this->build >= 17326) {
-              if ($ability == 0x020C00) $this->players[$playerId]['race'] = "Terran";
-              elseif ($ability == 0x022000) $this->players[$playerId]['race'] = "Protoss";
-              elseif ($ability == 0x023200) $this->players[$playerId]['race'] = "Zerg";
-            }
-            else {
-              if ($ability == 0x020A00) $this->players[$playerId]['race'] = "Terran";
-              elseif ($ability == 0x021E00) $this->players[$playerId]['race'] = "Protoss";
-              elseif ($ability == 0x023000) $this->players[$playerId]['race'] = "Zerg";
-            }
-          }
-          if ($temp & 0x20) {
-            $this->addPlayerAbility($playerId, ceil($time /16), $ability);
-            $events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
-            $this->events = $events;
-          }
+          $events[] = $event;
+          $this->events = $events;
           
           if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),$ability));
           $this->addPlayerAction($playerId, floor($time / 16));
+          $numByte += $buf->tell();
         }
   
         private function oldParsePlayerEvent($string, &$numByte, $playerId, $time, &$events) {
