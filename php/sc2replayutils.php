@@ -710,7 +710,9 @@ class SC2ReplayUtils {
 		0x002602 => array('link' => 0x020900),
 		0x002613 => array('desc' => 'scan moves (attack)', 'name' => 'scan move', 'type' => SC2_TYPEGEN),
 		0x022701 => array('desc' => 'returns cargo', 'name' => 'return cargo', 'type' => SC2_TYPEGEN),
-		0x01F006 => array('desc' => 'continues construction', 'name' => 'construct', 'type' => SC2_TYPEGEN)
+		0x01F006 => array('desc' => 'continues construction', 'name' => 'construct', 'type' => SC2_TYPEGEN),
+    0x003600 => array('desc' => 'Right clicks', 'name' => 'right click', 'type' => SC2_TYPEGEN),
+    0x005600 => array('desc' => 'Right clicks (into fog)', 'name' => 'right click (fog)', 'type' => SC2_TYPEGEN)
 	);
 	
 	
