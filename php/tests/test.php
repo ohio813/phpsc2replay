@@ -30,7 +30,7 @@ function test_file($file) {
     $old = file_get_contents($file.'.parsed');
     $diff = diff($old, $new);
     if ($diff != -1) {
-      echo $file . ': position ' . $diff . ' old: >>' . substr($old, $diff - 5, 10) . '<< new: >>' . substr($new, $diff - 5, 10) . "<< ";
+      echo $file . ': position ' . $diff . ' old: >>' . substr($old, $diff - 10, 20) . '<< new: >>' . substr($new, $diff - 10, 20) . "<< ";
       file_put_contents($file . '.new.parsed', $new);
       echo "New content saved as " .$file. ".new.parsed\n";
       //printDiff($old, $new);

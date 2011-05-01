@@ -753,13 +753,14 @@ class SC2Replay {
     if ($this->build < 16561) {
       return $this->oldParseSelectionEvent($string, $numByte, $playerId, $time, $eventCode);
     }
-    $numByte++; // skip flag byte
-    $deselectFlags = MPQFile::readByte($string,$numByte);
+    $buf = new ByteBuffer(substr($string, $numByte, strlen($string)-$numByte+1));
+    $buf->skip(1);
+    $deselectFlags = $buf->readByte();
     if (($deselectFlags & 3) == 1) {
-      $nextByte = MPQFile::readByte($string,$numByte);
+      $nextByte = $buf->readByte();
       $deselectionBits = ($deselectFlags & 0xFC) | ($nextByte & 3);
       while ($deselectionBits > 6) {
-        $nextByte = MPQFile::readByte($string,$numByte);
+        $nextByte = $buf->readByte();
         $deselectionBits -= 8;
       }
       $deselectionBits += 2;
@@ -767,10 +768,10 @@ class SC2Replay {
       $bitMask = pow(2,$deselectionBits) - 1;
     }
     else if (($deselectFlags & 3) == 2 || ($deselectFlags & 3) == 3) {
-      $nextByte = MPQFile::readByte($string,$numByte);
+      $nextByte = $buf->readByte();
       $deselectionBytes = ($deselectFlags & 0xFC) | ($nextByte & 3);
       while ($deselectionBytes > 0) {
-        $nextByte = MPQFile::readByte($string,$numByte);
+        $nextByte = $buf->readByte();
         $deselectionBytes--;
       }
       $bitMask = 3;
@@ -782,7 +783,7 @@ class SC2Replay {
     $uType = array();
     $unitIDs = array();
     $prevByte = $nextByte;
-    $nextByte = MPQFile::readByte($string,$numByte);
+    $nextByte = $buf->readByte();
     if ($bitMask > 0)
       $numUnitTypeIDs = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
     else
@@ -791,7 +792,7 @@ class SC2Replay {
       $unitTypeID = 0;
       for ($j = 0;$j < 3;$j++) {
         $prevByte = $nextByte;
-        $nextByte = MPQFile::readByte($string,$numByte);
+        $nextByte = $buf->readByte();
         if ($bitMask > 0)
           $byte = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
         else
@@ -799,7 +800,7 @@ class SC2Replay {
         $unitTypeID = $byte << ((2 - $j )* 8) | $unitTypeID;
       }
       $prevByte = $nextByte;
-      $nextByte = MPQFile::readByte($string,$numByte);
+      $nextByte = $buf->readByte();
       if ($bitMask > 0)
         $unitTypeCount = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
       else
@@ -808,7 +809,7 @@ class SC2Replay {
       $uType[$i + 1]['id'] = $unitTypeID;
     }
     $prevByte = $nextByte;
-    $nextByte = MPQFile::readByte($string,$numByte);
+    $nextByte = $buf->readByte();
     if ($bitMask > 0)
       $numUnits = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
     else
@@ -818,7 +819,7 @@ class SC2Replay {
       $unitID = 0;
       for ($j = 0;$j < 4;$j++) {
         $prevByte = $nextByte;
-        $nextByte = MPQFile::readByte($string,$numByte);
+        $nextByte = $buf->readByte();
         if ($bitMask > 0)
           $byte = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
         else
@@ -847,6 +848,7 @@ class SC2Replay {
     if ($eventCode == 0xAC) {
       $this->addPlayerAction($playerId, floor($time / 16));
     }
+    $numByte += $buf->tell();
   }
 
   private function oldParseSelectionEvent($string, &$numByte, $playerId, $time, $eventCode) {
