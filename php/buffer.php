@@ -11,8 +11,8 @@ class ByteBuffer {
 
     static private $LO_MASKS =     array(0x00, 0x01, 0x03, 0x07, 0x0F, 0x1F, 0x3F, 0x7F, 0xFF);
     static private $LO_MASKS_INV = array(0x00, 0x80, 0xC0, 0xE0, 0xF0, 0xF8, 0xFC, 0xFE, 0xFF);
-    static private $HI_MASKS =     array(0xFF, 0x7F, 0x3F, 0x1F, 0xF0, 0xE0, 0xC0, 0x80, 0x00);
-    static private $HI_MASKS_INV = array(0xFF, 0xFE, 0xFC, 0xF8, 0x0F, 0x07, 0x03, 0x01, 0x00);
+    static private $HI_MASKS =     array(0xFF, 0xFE, 0xFC, 0xF8, 0xF0, 0xE0, 0xC0, 0x80, 0x00);
+    static private $HI_MASKS_INV = array(0xFF, 0x7F, 0x3F, 0x1F, 0x0F, 0x07, 0x03, 0x01, 0x00);
 
     public function __construct($string) {
         $this->contents = $string;
@@ -100,24 +100,18 @@ class ByteBuffer {
         // general case
         $oldBitShift = $this->bitShift;
         $newBitShift = ($this->bitShift + $bits) % 8;
-
-        $loMask = pow(2, $oldBitShift) - 1;
-        $loMaskInv = 0xFF - pow(2, 8 - $oldBitShift) + 1;
-        $hiMask = 0xFF ^ $loMask;
-        $hiMaskInv = 0xFF ^ $loMaskInv;
-        /*
+        
         $loMask = self::$LO_MASKS[$oldBitShift];
         $loMaskInv = self::$LO_MASKS_INV[$oldBitShift];
         $hiMask = self::$HI_MASKS[$oldBitShift];
         $hiMaskInv = self::$HI_MASKS_INV[$oldBitShift];
-         */
 
         if ($newBitShift == 0) { // this read is going to re-align the buffer
-            $lastMask = 0xFF;
-            $adjustment = 8 - $oldBitShift;
+          $lastMask = 0xFF;
+          $adjustment = 8 - $oldBitShift;
         } else {
-            $lastMask = pow(2, $newBitShift) - 1;
-            $adjustment = $newBitShift - $oldBitShift;
+          $lastMask = self::$LO_MASKS[$newBitShift];
+          $adjustment = $newBitShift - $oldBitShift;
         }
 
         /* loop invariants:
@@ -144,7 +138,7 @@ class ByteBuffer {
 
             $rawBytes[] = $first | ($last >> max($adjustment, 0));
             if ($adjustment > 0) {
-              $rawBytes[] = $last & (pow(2, $adjustment) - 1);
+              $rawBytes[] = $last & self::$LO_MASKS[$adjustment];
             }
             $bitCount = 0;
           }

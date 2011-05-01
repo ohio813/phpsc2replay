@@ -13,6 +13,8 @@
     You should have received a copy of the GNU General Public License
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
+include_once 'buffer.php';
+
 class SC2Replay {
 	public static $gameSpeeds = array("" => "Unknown", 0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
 	public static $difficultyLevels = array("" => "Unknown", 0 => "Very easy", 1=> "Easy", 2=> "Medium", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
@@ -972,7 +974,6 @@ class SC2Replay {
           if ($this->build < 16561) {
             return $this->oldParsePlayerEvent($string, $numByte, $playerId, $time, $events);
           }
-          include_once 'buffer.php';
           $buf = new ByteBuffer(substr($string, $numByte, strlen($string)-$numByte+1));
           $flags = $buf->readByte();
           $type = $buf->readByte();
@@ -996,7 +997,7 @@ class SC2Replay {
                 $event['l'] = array('x' => $x, 'y' => $y);
               } else if ($abilityFlags & 0x20) { // unit attached
 
-                $buf->readShort(); // code?
+                $buf->skip(2); // code?
                 $objId = $buf->readObjectId();
                 $objTy = $buf->readObjectType();
                 $buf->skip(10);
@@ -1043,8 +1044,7 @@ class SC2Replay {
               }
             }
           }
-          $events[] = $event;
-          $this->events = $events;
+          $this->events[] = $event;
           
           if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),$ability));
           $this->addPlayerAction($playerId, floor($time / 16));
