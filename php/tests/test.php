@@ -22,7 +22,7 @@ function test_file($file) {
   $mpq = new MPQFile($file);
   $rep = $mpq->parseReplay();
   if (!$rep) {
-    echo "Parse error!";
+    echo "Parse error!\n";
     return;
   }
   $new = $rep->jsonify();
