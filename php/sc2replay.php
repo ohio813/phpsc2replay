@@ -508,228 +508,7 @@ class SC2Replay {
 						case 0x8C:
 						case 0x9C:
 						case 0xAC: // player changes selection
-							if ($this->build >= 16561) {
-								$numByte++; // skip flag byte
-								$deselectFlags = MPQFile::readByte($string,$numByte);
-								if (($deselectFlags & 3) == 1) {
-									$nextByte = MPQFile::readByte($string,$numByte);
-									$deselectionBits = ($deselectFlags & 0xFC) | ($nextByte & 3);
-									while ($deselectionBits > 6) {
-										$nextByte = MPQFile::readByte($string,$numByte);
-										$deselectionBits -= 8;
-									}
-									$deselectionBits += 2;
-									$deselectionBits = $deselectionBits % 8;
-									$bitMask = pow(2,$deselectionBits) - 1;
-								}
-								else if (($deselectFlags & 3) == 2 || ($deselectFlags & 3) == 3) {
-									$nextByte = MPQFile::readByte($string,$numByte);
-									$deselectionBytes = ($deselectFlags & 0xFC) | ($nextByte & 3);
-									while ($deselectionBytes > 0) {
-										$nextByte = MPQFile::readByte($string,$numByte);
-										$deselectionBytes--;
-									}
-									$bitMask = 3;
-								}
-								else if (($deselectFlags & 3) == 0) {
-									$bitMask = 3;
-									$nextByte = $deselectFlags;
-								}
-								$uType = array();
-								$unitIDs = array();
-								$prevByte = $nextByte;
-								$nextByte = MPQFile::readByte($string,$numByte);
-								if ($bitMask > 0)
-									$numUnitTypeIDs = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
-								else
-									$numUnitTypeIDs = $nextByte;
-								for ($i = 0;$i < $numUnitTypeIDs;$i++) {
-									$unitTypeID = 0;
-									for ($j = 0;$j < 3;$j++) {
-										$prevByte = $nextByte;
-										$nextByte = MPQFile::readByte($string,$numByte);
-										if ($bitMask > 0)
-											$byte = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
-										else
-											$byte = $nextByte;
-										$unitTypeID = $byte << ((2 - $j )* 8) | $unitTypeID;
-									}
-									$prevByte = $nextByte;
-									$nextByte = MPQFile::readByte($string,$numByte);
-									if ($bitMask > 0)
-										$unitTypeCount = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
-									else
-										$unitTypeCount = $nextByte;
-									$uType[$i + 1]['count'] = $unitTypeCount;
-									$uType[$i + 1]['id'] = $unitTypeID;
-								}
-								$prevByte = $nextByte;
-								$nextByte = MPQFile::readByte($string,$numByte);
-								if ($bitMask > 0)
-									$numUnits = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
-								else
-									$numUnits = $nextByte;
-								
-								for ($i = 0;$i < $numUnits;$i++) {
-									$unitID = 0;
-									for ($j = 0;$j < 4;$j++) {
-										$prevByte = $nextByte;
-										$nextByte = MPQFile::readByte($string,$numByte);
-										if ($bitMask > 0)
-											$byte = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
-										else
-											$byte = $nextByte;
-										if ($j < 2)
-											$unitID = ($byte << ((1 - $j )* 8)) | $unitID;
-									}
-									$unitIDs[] = $unitID;
-								}
-								$a = 0;
-								if($this->debug) {
-									$this->debug("Selection Change");
-									$this->debug(sprintf("Player %s", $playerId));
-								}
-								foreach($uType as $unitType){
-									for($i = 1; $i <= $unitType['count']; $i++){
-										$uid = $unitIDs[$a];
-										//Bytes 3 + 4 contain flag info (perhaps same as in 1.00)
-										$this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
-										if ($this->debug) {
-											$this->debug(sprintf("  0x%06X -> 0x%04X", $unitType['id'], $uid));
-										}
-										$a++;
-									}
-								}
-								if ($eventCode == 0xAC) {
-									$this->addPlayerAction($playerId, floor($time / 16));
-								}
-								break;
-							}
-							$selFlags = MPQFile::readByte($string,$numByte);
-							$dsuCount = MPQFile::readByte($string,$numByte);
-							if($this->debug){
-								$this->debug("Selection Change");
-								$this->debug(sprintf("Player %s", $playerId));
-								$this->debug(sprintf("Time %d", $time));
-								$this->debug(sprintf("Deselected Count: %d", $dsuCount));
-							}
-							$dsuExtraBits = $dsuCount % 8;
-							$uType = array();
-							if ($dsuCount > 0)
-								$dsuMap = MPQFile::readBytes($string,$numByte,floor($dsuCount / 8));
-							if ($dsuExtraBits != 0 && $this->build < 16561) { // not byte-aligned
-								$dsuMapLastByte = MPQFile::readByte($string,$numByte);
-
-								$nByte = MPQFile::readByte($string,$numByte);
-
-								//Recalculating these is excessive.             //ex: For extra = 2
-								$offsetTailMask = (0xFF >> (8-$dsuExtraBits));  //ex: 00000011 
-								$offsetHeadMask = (~$offsetTailMask) & 0xFF;    //ex: 11111100
-								$offsetWTailMask = 0xFF >> $dsuExtraBits;       //ex: 00111111
-								$offsetWHeadMask = (~$offsetWTailMask) & 0xFF;  //ex: 11000000
-
-								$uTypesCount = ($dsuMapLastByte & $offsetHeadMask) |
-											   ($nByte          & $offsetTailMask);
-
-								if($this->debug){
-								  $this->debug(sprintf("Number of New Unit Types %d", $uTypesCount));
-								}
-
-								for ($i = 1;$i <= $uTypesCount;$i++) {
-									$nBytes = unpack("C3",MPQFile::readBytes($string,$numByte,3));
-									$byte1 = ( $nByte     & $offsetHeadMask) |
-											 (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-									$byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
-											 ( $nBytes[2] & $offsetTailMask);
-									$byte3 = (($nBytes[2] & $offsetHeadMask) << $dsuExtraBits) |
-											 ( $nBytes[3] & $offsetTailMask);
-
-									  //Byte3 is almost invariably 0x01
-
-									$uType[$i]['id'] = (($byte1 << 16) | 
-														($byte2 << 8)  | 
-														 $byte3) & 0xFFFFFF;
-
-									$nByte = MPQFile::readByte($string,$numByte);
-									$uType[$i]['count'] = ($nBytes[3] & $offsetHeadMask) |
-															($nByte     & $offsetTailMask);
-
-									if($this->debug){
-										$this->debug(sprintf("  %d x 0x%06X", $uType[$i]['count'], $uType[$i]['id']));
-									}
-
-								}
-								$lByte = MPQFile::readByte($string,$numByte);
-							
-								$totalUnits = ($nByte & $offsetHeadMask) |
-								  ($lByte & $offsetTailMask);
-
-								if($this->debug){ 
-								  $this->debug(sprintf("TOTAL: %d", $totalUnits));
-								}
-
-
-								//Populate the unitsDict
-								foreach($uType as $unitType){
-									for($i = 1; $i <= $unitType['count']; $i++){
-										$nBytes = unpack("C4", MPQFile::readBytes($string, $numByte,4));
-										$byte1 = ($lByte      & $offsetHeadMask) |
-												 (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-										$byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
-												 (($nBytes[2] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-										$byte3 = (($nBytes[2] & $offsetWTailMask) << $dsuExtraBits) |
-												 (($nBytes[3] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
-										$byte4 = (($nBytes[3] & $offsetWTailMask) << $dsuExtraBits) |
-												 ( $nBytes[4] & $offsetTailMask);
-
-										$uid = ($byte1 << 8) | $byte2;
-										//Bytes 3 + 4 contain Flag Info
-								
-										$this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
-
-										if($this->debug){
-											$this->debug(sprintf("  0x%06X -> 0x%02X", $unitType['id'], $uid));
-										}
-
-										$lByte = $nBytes[4]; //For looping.
-									}
-								}
-
-							} else { // byte-aligned
-								$uTypesCount = MPQFile::readByte($string,$numByte);
-								if($this->debug){
-									$this->debug(sprintf("Number of New Unit Types %d", $uTypesCount));
-								}
-								for ($i = 1;$i <= $uTypesCount;$i++) {
-									$uType[$i]['id'] = $this->readUnitTypeID($string,$numByte);
-									$uType[$i]['count'] = MPQFile::readByte($string,$numByte);
-									if($this->debug){
-										$this->debug(sprintf("  %d x 0x%06X", $uType[$i]['count'], $uType[$i]['id']));
-									}
-								}
-								$totalUnits = MPQFile::readByte($string,$numByte);
-								if($this->debug){
-									$this->debug(sprintf("TOTAL: %d", $totalUnits));
-								}
-
-							//Populate the Units Dict
-								foreach($uType as $unitType){
-									for($i = 1; $i <= $unitType['count']; $i++){
-										$nBytes = unpack("C4", MPQFile::readBytes($string, $numByte, 4));
-										$uid = ($nBytes[1] << 8) | $nBytes[2];
-
-										$this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
-										if($this->debug){
-											$this->debug(sprintf("  0x%06X -> 0x%02X", $unitType['id'], $uid));
-										}
-									}
-								}
-							}
-							
-							//update apm fields
-							if ($eventCode == 0xAC) {
-								$this->addPlayerAction($playerId, floor($time / 16));
-							}
+              $this->parseSelectionEvent($string, $numByte, $playerId, $time, $eventCode);
 							break;
 						case 0x0D: // manually uses hotkey
 						case 0x1D:
@@ -969,6 +748,235 @@ class SC2Replay {
 		}
 		return $numEvents;
 	}
+
+  private function parseSelectionEvent($string, &$numByte, $playerId, $time, $eventCode) {
+    if ($this->build < 16561) {
+      return $this->oldParseSelectionEvent($string, $numByte, $playerId, $time, $eventCode);
+    }
+    $numByte++; // skip flag byte
+    $deselectFlags = MPQFile::readByte($string,$numByte);
+    if (($deselectFlags & 3) == 1) {
+      $nextByte = MPQFile::readByte($string,$numByte);
+      $deselectionBits = ($deselectFlags & 0xFC) | ($nextByte & 3);
+      while ($deselectionBits > 6) {
+        $nextByte = MPQFile::readByte($string,$numByte);
+        $deselectionBits -= 8;
+      }
+      $deselectionBits += 2;
+      $deselectionBits = $deselectionBits % 8;
+      $bitMask = pow(2,$deselectionBits) - 1;
+    }
+    else if (($deselectFlags & 3) == 2 || ($deselectFlags & 3) == 3) {
+      $nextByte = MPQFile::readByte($string,$numByte);
+      $deselectionBytes = ($deselectFlags & 0xFC) | ($nextByte & 3);
+      while ($deselectionBytes > 0) {
+        $nextByte = MPQFile::readByte($string,$numByte);
+        $deselectionBytes--;
+      }
+      $bitMask = 3;
+    }
+    else if (($deselectFlags & 3) == 0) {
+      $bitMask = 3;
+      $nextByte = $deselectFlags;
+    }
+    $uType = array();
+    $unitIDs = array();
+    $prevByte = $nextByte;
+    $nextByte = MPQFile::readByte($string,$numByte);
+    if ($bitMask > 0)
+      $numUnitTypeIDs = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
+    else
+      $numUnitTypeIDs = $nextByte;
+    for ($i = 0;$i < $numUnitTypeIDs;$i++) {
+      $unitTypeID = 0;
+      for ($j = 0;$j < 3;$j++) {
+        $prevByte = $nextByte;
+        $nextByte = MPQFile::readByte($string,$numByte);
+        if ($bitMask > 0)
+          $byte = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
+        else
+          $byte = $nextByte;
+        $unitTypeID = $byte << ((2 - $j )* 8) | $unitTypeID;
+      }
+      $prevByte = $nextByte;
+      $nextByte = MPQFile::readByte($string,$numByte);
+      if ($bitMask > 0)
+        $unitTypeCount = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
+      else
+        $unitTypeCount = $nextByte;
+      $uType[$i + 1]['count'] = $unitTypeCount;
+      $uType[$i + 1]['id'] = $unitTypeID;
+    }
+    $prevByte = $nextByte;
+    $nextByte = MPQFile::readByte($string,$numByte);
+    if ($bitMask > 0)
+      $numUnits = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
+    else
+      $numUnits = $nextByte;
+    
+    for ($i = 0;$i < $numUnits;$i++) {
+      $unitID = 0;
+      for ($j = 0;$j < 4;$j++) {
+        $prevByte = $nextByte;
+        $nextByte = MPQFile::readByte($string,$numByte);
+        if ($bitMask > 0)
+          $byte = ($prevByte & (0xFF - $bitMask)) | ($nextByte & $bitMask);
+        else
+          $byte = $nextByte;
+        if ($j < 2)
+          $unitID = ($byte << ((1 - $j )* 8)) | $unitID;
+      }
+      $unitIDs[] = $unitID;
+    }
+    $a = 0;
+    if($this->debug) {
+      $this->debug("Selection Change");
+      $this->debug(sprintf("Player %s", $playerId));
+    }
+    foreach($uType as $unitType){
+      for($i = 1; $i <= $unitType['count']; $i++){
+        $uid = $unitIDs[$a];
+        //Bytes 3 + 4 contain flag info (perhaps same as in 1.00)
+        $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
+        if ($this->debug) {
+          $this->debug(sprintf("  0x%06X -> 0x%04X", $unitType['id'], $uid));
+        }
+        $a++;
+      }
+    }
+    if ($eventCode == 0xAC) {
+      $this->addPlayerAction($playerId, floor($time / 16));
+    }
+  }
+
+  private function oldParseSelectionEvent($string, &$numByte, $playerId, $time, $eventCode) {
+    $selFlags = MPQFile::readByte($string,$numByte);
+    $dsuCount = MPQFile::readByte($string,$numByte);
+    if($this->debug){
+      $this->debug("Selection Change");
+      $this->debug(sprintf("Player %s", $playerId));
+      $this->debug(sprintf("Time %d", $time));
+      $this->debug(sprintf("Deselected Count: %d", $dsuCount));
+    }
+    $dsuExtraBits = $dsuCount % 8;
+    $uType = array();
+    if ($dsuCount > 0)
+      $dsuMap = MPQFile::readBytes($string,$numByte,floor($dsuCount / 8));
+    if ($dsuExtraBits != 0 && $this->build < 16561) { // not byte-aligned
+      $dsuMapLastByte = MPQFile::readByte($string,$numByte);
+
+      $nByte = MPQFile::readByte($string,$numByte);
+
+      //Recalculating these is excessive.             //ex: For extra = 2
+      $offsetTailMask = (0xFF >> (8-$dsuExtraBits));  //ex: 00000011 
+      $offsetHeadMask = (~$offsetTailMask) & 0xFF;    //ex: 11111100
+      $offsetWTailMask = 0xFF >> $dsuExtraBits;       //ex: 00111111
+      $offsetWHeadMask = (~$offsetWTailMask) & 0xFF;  //ex: 11000000
+
+      $uTypesCount = ($dsuMapLastByte & $offsetHeadMask) |
+        ($nByte          & $offsetTailMask);
+
+      if($this->debug){
+        $this->debug(sprintf("Number of New Unit Types %d", $uTypesCount));
+      }
+
+      for ($i = 1;$i <= $uTypesCount;$i++) {
+        $nBytes = unpack("C3",MPQFile::readBytes($string,$numByte,3));
+        $byte1 = ( $nByte     & $offsetHeadMask) |
+          (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+        $byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
+          ( $nBytes[2] & $offsetTailMask);
+        $byte3 = (($nBytes[2] & $offsetHeadMask) << $dsuExtraBits) |
+          ( $nBytes[3] & $offsetTailMask);
+
+        //Byte3 is almost invariably 0x01
+
+        $uType[$i]['id'] = (($byte1 << 16) | 
+														($byte2 << 8)  | 
+                            $byte3) & 0xFFFFFF;
+
+        $nByte = MPQFile::readByte($string,$numByte);
+        $uType[$i]['count'] = ($nBytes[3] & $offsetHeadMask) |
+          ($nByte     & $offsetTailMask);
+
+        if($this->debug){
+          $this->debug(sprintf("  %d x 0x%06X", $uType[$i]['count'], $uType[$i]['id']));
+        }
+
+      }
+      $lByte = MPQFile::readByte($string,$numByte);
+      
+      $totalUnits = ($nByte & $offsetHeadMask) |
+        ($lByte & $offsetTailMask);
+
+      if($this->debug){ 
+        $this->debug(sprintf("TOTAL: %d", $totalUnits));
+      }
+
+
+      //Populate the unitsDict
+      foreach($uType as $unitType){
+        for($i = 1; $i <= $unitType['count']; $i++){
+          $nBytes = unpack("C4", MPQFile::readBytes($string, $numByte,4));
+          $byte1 = ($lByte      & $offsetHeadMask) |
+            (($nBytes[1] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+          $byte2 = (($nBytes[1] & $offsetWTailMask) << $dsuExtraBits) |
+            (($nBytes[2] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+          $byte3 = (($nBytes[2] & $offsetWTailMask) << $dsuExtraBits) |
+            (($nBytes[3] & $offsetWHeadMask) >> (8 - $dsuExtraBits));
+          $byte4 = (($nBytes[3] & $offsetWTailMask) << $dsuExtraBits) |
+            ( $nBytes[4] & $offsetTailMask);
+
+          $uid = ($byte1 << 8) | $byte2;
+          //Bytes 3 + 4 contain Flag Info
+          
+          $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
+
+          if($this->debug){
+            $this->debug(sprintf("  0x%06X -> 0x%02X", $unitType['id'], $uid));
+          }
+
+          $lByte = $nBytes[4]; //For looping.
+        }
+      }
+
+    } else { // byte-aligned
+      $uTypesCount = MPQFile::readByte($string,$numByte);
+      if($this->debug){
+        $this->debug(sprintf("Number of New Unit Types %d", $uTypesCount));
+      }
+      for ($i = 1;$i <= $uTypesCount;$i++) {
+        $uType[$i]['id'] = $this->readUnitTypeID($string,$numByte);
+        $uType[$i]['count'] = MPQFile::readByte($string,$numByte);
+        if($this->debug){
+          $this->debug(sprintf("  %d x 0x%06X", $uType[$i]['count'], $uType[$i]['id']));
+        }
+      }
+      $totalUnits = MPQFile::readByte($string,$numByte);
+      if($this->debug){
+        $this->debug(sprintf("TOTAL: %d", $totalUnits));
+      }
+
+      //Populate the Units Dict
+      foreach($uType as $unitType){
+        for($i = 1; $i <= $unitType['count']; $i++){
+          $nBytes = unpack("C4", MPQFile::readBytes($string, $numByte, 4));
+          $uid = ($nBytes[1] << 8) | $nBytes[2];
+
+          $this->addSelectedUnit($uid, $unitType['id'], $playerId, floor($time / 16));
+          if($this->debug){
+            $this->debug(sprintf("  0x%06X -> 0x%02X", $unitType['id'], $uid));
+          }
+        }
+      }
+    }
+    
+    //update apm fields
+    if ($eventCode == 0xAC) {
+      $this->addPlayerAction($playerId, floor($time / 16));
+    }
+
+  }
 
         private function parsePlayerEvent($string, &$numByte, $playerId, $time, &$events) {
           if ($this->build < 16561) {
