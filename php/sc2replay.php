@@ -490,40 +490,58 @@ class SC2Replay {
 						case 0x8B:
 						case 0x9B:
 						case 0x0B: // player uses an ability
-							$ability = 0;
-							if ($this->build >= 18574) {
+							$ability = -1;
+							$firstByte = -1;
+							if ($this->build >= 18317) {
 								$firstByte = MPQFile::readByte($string,$numByte);
 								$temp = MPQFile::readByte($string,$numByte);								
-								if ($firstByte & 0x04) {
+								if ($firstByte & 0x0c && !($firstByte & 1)) {
 									if ($temp & 8) {
 										if ($temp & 0x80)
 											$numByte += 8;
 										$numByte += 10;
+										$ability = 0;
 									}
-									else if (($temp & 0x60) == 0x60)
-										$numByte += 7;
-									else if ($temp & 0x40) {
+									else {
 										$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte));
-										$temp = $ability & 0xF0; // some kind of flag
+										if (($temp & 0x60) == 0x60)
+											$numByte += 4;
+										// else if ($temp & 0x40) {
+										else {
+											$flagtemp = $ability & 0xF0; // some kind of flag
+											if ($flagtemp & 0x20) {
+												$numByte += 9;
+												if ($firstByte & 8)
+													$numByte += 9;
+											}
+											else if ($flagtemp & 0x10)
+												$numByte += 9;
+											else if ($flagtemp & 0x40)
+												$numByte += 18;
+
+										}
 										$ability = $ability & 0xFFFF0F; // strip flag bits
-										if ($temp & 0x20)
-											$numByte += 9;
-										else if ($temp & 0x40)
-											$numByte += 18;
 									}
 								}
 							}
-							if ($this->build >= 16561 && $this->build < 18574) {
-								$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte) & 0x3F);
+							if ($this->build >= 16561 && ($firstByte == -1 || $ability == -1)) {
+								if ($firstByte == -1) {
+									$firstByte = MPQFile::readByte($string,$numByte);
+									$temp = MPQFile::readByte($string,$numByte);	
+								}
+								if ($ability == -1)
+									$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte) & 0x3F);
 								if ($temp == 0x20 || $temp == 0x22) {
 									$nByte = $ability & 0xFF;
 									if ($nByte > 0x07) {
-										if ($firstByte == 0x29 || $firstByte == 0x19) { $numByte += 4; break; }
-										$numByte += 9;
-										if (($nByte & 0x20) > 0) {
-											$numByte += 8;
-											$nByte = MPQFile::readByte($string,$numByte);
-											if ($nByte & 8) $numByte += 4;
+										if ($firstByte == 0x29 || $firstByte == 0x19) { $numByte += 4; }
+										else {
+											$numByte += 9;
+											if (($nByte & 0x20) > 0) {
+												$numByte += 8;
+												$nByte = MPQFile::readByte($string,$numByte);
+												if ($nByte & 8) $numByte += 4;
+											}
 										}
 									}
 								}
