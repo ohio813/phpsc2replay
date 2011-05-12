@@ -477,9 +477,30 @@ class SC2Replay {
 						case 0x8B:
 						case 0x9B:
 						case 0x0B: // player uses an ability
-							if ($this->build >= 16561) {
+							$ability = 0;
+							if ($this->build >= 18574) {
 								$firstByte = MPQFile::readByte($string,$numByte);
-								$temp = MPQFile::readByte($string,$numByte);
+								$temp = MPQFile::readByte($string,$numByte);								
+								if ($firstByte & 0x04) {
+									if ($temp & 8) {
+										if ($temp & 0x80)
+											$numByte += 8;
+										$numByte += 10;
+									}
+									else if (($temp & 0x60) == 0x60)
+										$numByte += 7;
+									else if ($temp & 0x40) {
+										$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte));
+										$temp = $ability & 0xF0; // some kind of flag
+										$ability = $ability & 0xFFFF0F; // strip flag bits
+										if ($temp & 0x20)
+											$numByte += 9;
+										else if ($temp & 0x40)
+											$numByte += 18;
+									}
+								}
+							}
+							if ($this->build >= 16561 && $this->build < 18574) {
 								$ability = (MPQFile::readByte($string,$numByte) << 16) | (MPQFile::readByte($string,$numByte) << 8) | (MPQFile::readByte($string,$numByte) & 0x3F);
 								if ($temp == 0x20 || $temp == 0x22) {
 									$nByte = $ability & 0xFF;
@@ -497,10 +518,16 @@ class SC2Replay {
 									$numByte += 7;
 								else if ($temp == 0x88 || $temp == 0x8A)
 									$numByte += 15;
-								
-								// the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
+							}
+							// the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
+							if ($this->build >= 16561) {
 								if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
-									if ($this->build >= 17326) {
+									if ($this->build >= 18574) {
+										if ($ability == 0x010C00) $this->players[$playerId]['race'] = "Terran";
+										elseif ($ability == 0x012000) $this->players[$playerId]['race'] = "Protoss";
+										elseif ($ability == 0x013200) $this->players[$playerId]['race'] = "Zerg";
+									}
+									else if ($this->build >= 17326) {
 										if ($ability == 0x020C00) $this->players[$playerId]['race'] = "Terran";
 										elseif ($ability == 0x022000) $this->players[$playerId]['race'] = "Protoss";
 										elseif ($ability == 0x023200) $this->players[$playerId]['race'] = "Zerg";
@@ -511,7 +538,7 @@ class SC2Replay {
 										elseif ($ability == 0x023000) $this->players[$playerId]['race'] = "Zerg";
 									}
 								}
-								if ($temp & 0x20) {
+								if ($ability) {
 									$this->addPlayerAbility($playerId, ceil($time /16), $ability);
 									$events[] = array('p' => $playerId, 't' => $time, 'a' => $ability);
 									$this->events = $events;
@@ -519,7 +546,7 @@ class SC2Replay {
 								
 								if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),$ability));
 								$this->addPlayerAction($playerId, floor($time / 16));
-									
+
 								break;
 							}
 							// the following section is only reached for builds pre-16561							
