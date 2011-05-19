@@ -982,13 +982,108 @@ class SC2Replay {
 
         private function parsePlayerEvent($string, &$numByte, $playerId, $time, &$events) {
           if ($this->build < 16561) {
-            return $this->oldParsePlayerEvent($string, $numByte, $playerId, $time, $events);
+            return $this->parsePlayerEvent_pre16561($string, $numByte, $playerId, $time, $events);
+          } else if ($this->build < 18574) {
+            return $this->parsePlayerEvent_pre18574($string, $numByte, $playerId, $time, $events);
           }
+          
           $buf = new ByteBuffer(substr($string, $numByte, strlen($string)-$numByte+1));
           $flags = $buf->readByte();
           $type = $buf->readByte();
           $event = array('p' => $playerId, 't' => $time);
+          if ($this->debug) {
+            $event['d_sb'] = sprintf("%X", $numByte);
+            $event['d_fl'] = sprintf("%02X", $flags);
+            $event['d_ty'] = sprintf("%02X", $type);
+          }
+          if ($flags == 0x4) { // patch 1.3.3 stuff
+            if ($type < 0x10) {
+              $location = array('x' => $buf->readCoordinate(), 'y' => $buf->readCoordinate()); // y seems incorrect
+              $buf->readCoordinate(); // ?
+              $location['z'] = $buf->readCoordinate();
+              $event['a'] = 0x3700;
+              $event['l'] = $location;
+            }
+            /* else if ($type == 0x88) { */
+            /*    $event['d_bytes'] = sprintf("%02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X %02X", $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte());  */
+            /* } */
+            else if ($type & 0x40) {
+              $ability = $buf->readByte() << 16 | $buf->readByte() << 8 | $buf->readByte();
+              $event['a'] = $ability; // sprintf("%06X", $ability);
+              if ($ability & 0x20) {
+                if ($this->debug)
+                  $event['d_bytes'] = sprintf("%02X %02X %02X %02X %02X %02X %02X %02X %02X", $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte(), $buf->readByte());
+                else
+                  $buf->skip(9);
+              } else if ($ability & 0x40) {
+                $buf->skip(18);
+              }
+            }
+          }
+          if ($type & 0x20) { //command card ability
 
+            $ability = $buf->readByte() << 8 | $buf->readByte();
+            if ($flags == 0x29 || $flags == 0x19 || $flags == 0x14) { // cancel?
+              $ability = $ability << 8 | $buf->readByte();
+              $event['o'] = $buf->readObjectId();
+            } else {
+              $abilityFlags = $buf->shift(6);
+              $ability = $ability << 8 | $abilityFlags;
+              if ($abilityFlags & 0x10) { // location attached
+                $x = $buf->readCoordinate();
+                $y = $buf->readCoordinate();
+                
+                $buf->skip(4);
+
+                $event['l'] = array('x' => $x, 'y' => $y);
+              } else if ($abilityFlags & 0x20) { // unit attached
+
+                $buf->skip(2); // code?
+                $objId = $buf->readObjectId();
+                $objTy = $buf->readObjectType();
+                $buf->skip(10);
+
+                $event['u'] = $objTy << 8 | 1; //TODO
+                $event['o'] = $objId;
+              } else if ($abilityFlags & 0x30) { // both?
+              } else {
+                //$this->debug('Unknown ability: ' . $ability);
+              }
+              
+            }
+            $event['a'] = $ability;
+            $this->addPlayerAbility($playerId, ceil($time /16), $ability);
+          } else if ($type & 0x80) { // has target unit, also right clicks
+            $ability = $buf->readByte() << 8 | $buf->readByte();
+            $objId = $buf->readObjectId();
+            $objTy = $buf->readObjectType();
+            $buf->skip(10);
+
+            $event['a'] = $ability;
+            $event['u'] = $objTy << 8 | 1; // TODO
+            $event['o'] = $objId;
+          }
+          
+          if (isset($ability)) {
+            // the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
+            if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
+              if ($ability == 0x020C00) $this->players[$playerId]['race'] = "Terran";
+              elseif ($ability == 0x022000) $this->players[$playerId]['race'] = "Protoss";
+              elseif ($ability == 0x023200) $this->players[$playerId]['race'] = "Zerg";
+            }
+          }
+          $this->events[] = $event;
+          
+          if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),isset($ability)?$ability:''));
+          $this->addPlayerAction($playerId, floor($time / 16));
+          $numByte += $buf->tell();
+        }
+  
+        private function parsePlayerEvent_pre18574($string, &$numByte, $playerId, $time, &$events) {
+          $buf = new ByteBuffer(substr($string, $numByte, strlen($string)-$numByte+1));
+          $flags = $buf->readByte();
+          $type = $buf->readByte();
+          $event = array('p' => $playerId, 't' => $time);
           if ($type & 0x20) { //command card ability
 
             $ability = $buf->readByte() << 8 | $buf->readByte();
@@ -1022,9 +1117,9 @@ class SC2Replay {
             }
             $event['a'] = $ability;
             $this->addPlayerAbility($playerId, ceil($time /16), $ability);
-          } else if ($type & 0x40) { // has target location, mostly right clicks
+          } else if ($type & 0x40 && $flags != 0x4 ) { // has target location, mostly right clicks
             $location = array('x' => $buf->readCoordinate(), 'y' => $buf->readCoordinate());
-            $buf->skip(5);
+            $buf->skip(2);
 
             $event['a'] = 0x3700; // code for right click
             $event['l'] = $location;
@@ -1056,12 +1151,12 @@ class SC2Replay {
           }
           $this->events[] = $event;
           
-          if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),$ability));
+          if ($this->debug) $this->debug(sprintf("Used ability - player id: $playerId - time: %d - ability code: %06X",floor($time / 16),isset($ability)?$ability:''));
           $this->addPlayerAction($playerId, floor($time / 16));
           $numByte += $buf->tell();
         }
-  
-        private function oldParsePlayerEvent($string, &$numByte, $playerId, $time, &$events) {
+
+        private function parsePlayerEvent_pre16561($string, &$numByte, $playerId, $time, &$events) {
           // the following section is only reached for builds pre-16561							
           $data = MPQFile::readBytes($string,$numByte,32);
           $reqTarget = unpack("C",substr($data,7,1));
