@@ -367,7 +367,7 @@ class MPQFile {
 		
 		if (!$flag_file) return false;
 		$fp = $blockOffset;
-		if ($flag_checksums) {
+		if ($flag_checksums || !$flag_singleunit) {
 			for ($i = $fileSize;$i > 0;$i -= $this->sectorSize) {
 				$sectors[] = self::readUInt32($this->fileData, $fp);
 				$blockSize -= 4;
@@ -388,7 +388,7 @@ class MPQFile {
 			$fp = $blockOffset + $sectors[$i];
 			$sectorData = self::readBytes($this->fileData, $fp,$sectorLen);
 			if ($this->debug) $this->debug(sprintf("Got %d bytes of sector data",strlen($sectorData)));
-			if ($flag_compressed && (($flag_singleunit && ($blockSize < $fileSize)) || ($flag_checksums && ($sectorLen <  $this->sectorSize)))) {
+			if ($flag_compressed && ((($blockSize < $fileSize)) || ($flag_checksums && ($sectorLen <  $this->sectorSize)))) {
 				$numByte = 0;
 				$compressionType = self::readByte($sectorData,$numByte);
 				$sectorData = substr($sectorData,1);
