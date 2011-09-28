@@ -256,6 +256,7 @@ class SC2Replay {
 			$p["sColor"] = "";
 			$this->players[$index + 1] = $p;
 		}
+		if ($this->debug) { echo "<pre>"; print_r($array); echo "</pre>"; }
 		$this->mapName = $array[1];
 		$this->gameFiletime = $array[5];
 		$this->gameCtime = floor(($array[5] - 116444735995904000) / 10000000);
@@ -497,8 +498,10 @@ class SC2Replay {
 								$temp = MPQFile::readByte($string,$numByte);								
 								if ($firstByte & 0x0c && !($firstByte & 1)) {
 									if ($temp & 8) {
-										if ($temp & 0x80)
+										if ($temp & 0x80) {
 											$numByte += 8;
+										}
+//										if ($firstByte & 4) $numByte++;
 										$numByte += 10;
 										$ability = 0;
 									}
@@ -518,7 +521,7 @@ class SC2Replay {
 												$numByte += 9;
 											else if ($flagtemp & 0x40)
 												$numByte += 18;
-
+//											if (($firstByte & 4) && ($temp & 0x40) == 0x40) $numByte++;
 										}
 										$ability = $ability & 0xFFFF0F; // strip flag bits
 									}

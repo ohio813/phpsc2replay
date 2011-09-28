@@ -66,6 +66,7 @@ class MPQFile {
 		$this->debugNewline = "<br />\n";
 		$this->versionString = "null";
 		$this->fileType = null;
+		$this->useExceptions = false;
 		if (!self::$cryptTable)
 			self::initCryptTable();
 		
@@ -86,7 +87,8 @@ class MPQFile {
 	
 	static function readByte($string, &$numByte) {
 		// the following checks that there are enough bytes left in the string
-		if ($numByte >= strlen($string)) { 
+		if ($numByte >= strlen($string)) {
+			if ($this->useExceptions) throw new Exception("Not enough input in function MPQFile::readByte");
 			return false;
 		}
 		$tmp = unpack("C",substr($string,$numByte,1));
@@ -95,7 +97,8 @@ class MPQFile {
 	}
 	static function readBytes($string, &$numByte, $length) {
 		// the following checks that there are enough bytes left in the string
-		if (strlen($string) - $numByte - $length < 0) { 
+		if (strlen($string) - $numByte - $length < 0) {
+			if ($this->useExceptions) throw new Exception("Not enough input in function MPQFile::readBytes");
 			return false;
 		}
 		$tmp = substr($string,$numByte,$length);
@@ -104,7 +107,8 @@ class MPQFile {
 	}
 	static function readUInt16($string, &$numByte) {
 		// the following checks that there are enough bytes left in the string
-		if (strlen($string) - $numByte - 2 < 0) { 
+		if (strlen($string) - $numByte - 2 < 0) {
+			if ($this->useExceptions) throw new Exception("Not enough input in function MPQFile::readUInt16");
 			return false;
 		}
 		$tmp = unpack("v",substr($string,$numByte,2));
@@ -113,7 +117,8 @@ class MPQFile {
 	}
 	static function readUInt32($string, &$numByte) {
 		// the following checks that there are enough bytes left in the string
-		if (strlen($string) - $numByte - 4 < 0) { 
+		if (strlen($string) - $numByte - 4 < 0) {
+			if ($this->useExceptions) throw new Exception("Not enough input in function MPQFile::readUInt32");
 			return false;
 		}
 		$tmp = unpack("V",substr($string,$numByte,4));
@@ -178,120 +183,103 @@ class MPQFile {
 				return MPQFile::parseVLFNumber($string,$numByte);
 				break;
 			default:
-//				if ($this->debug) $this->debug(sprintf("Unknown data type in function parseDetailsValue (%d)",$dataType));
+				if ($this->useExceptions) throw new Exception("Unknown data type in MPQFile::parseSerializedData");
 				return false;
 		}
 	}
 	
-
+	private function parseUserDataBlock(&$fp) {
+		$uDataMaxSize = self::readUInt32($this->fileData, $fp);
+		$headerOffset = self::readUInt32($this->fileData, $fp);
+		$this->headerOffset = $headerOffset;
+		$uDataSize = self::readUInt32($this->fileData, $fp);
+		$userDataArray = MPQFile::parseSerializedData($this->fileData,$fp);
+		
+		$this->verMajor = $userDataArray[1][1];
+		$this->build = $userDataArray[1][4];
+		$this->gameLen = ceil($userDataArray[3] / 16);
+		$this->versionString = sprintf("%d.%d.%d.%d",$this->verMajor,
+													 $userDataArray[1][2],
+													 $userDataArray[1][3],
+													 $this->build
+													 );
+		
+		$fp = $headerOffset;
+	}
+	
+	private function parseHeaderData(&$fp) {
+		$headerSize = self::readUInt32($this->fileData, $fp);
+		$archiveSize = self::readUInt32($this->fileData, $fp);
+		$this->archiveSize = $archiveSize;
+		$formatVersion = self::readUInt16($this->fileData, $fp);
+		$sectorSizeShift = self::readByte($this->fileData, $fp);
+		$sectorSize = 512 * pow(2,$sectorSizeShift);
+		$this->sectorSize = $sectorSize;
+		$fp++;
+		$hashTableOffset = self::readUInt32($this->fileData, $fp) + $this->headerOffset;
+		$this->hashTableOffset = $hashTableOffset;
+		$blockTableOffset = self::readUInt32($this->fileData, $fp) + $this->headerOffset; 
+		$this->blockTableOffset = $blockTableOffset;
+		if ($this->debug) $this->debug(sprintf("Hash table offset: %08X, Block table offset: %08X",$hashTableOffset, $blockTableOffset));
+		$hashTableEntries = self::readUInt32($this->fileData, $fp);
+		$this->hashTableSize = $hashTableEntries;
+		$blockTableEntries = self::readUInt32($this->fileData, $fp);
+		$this->blockTableSize = $blockTableEntries;
+	}
+	
+	private function decodeHashTable(&$fp) {
+		$hashSize = $this->hashTableSize * 4; // hash table size in 4-byte chunks
+		$tmp = array();
+		for ($i = 0;$i < $hashSize;$i++)
+			$tmp[$i] = self::readUInt32($this->fileData, $fp);
+		$hashTable = self::decryptStuff($tmp,self::hashStuff("(hash table)", self::$MPQ_HASH_FILE_KEY));
+		$this->hashtable = $hashTable;
+	}
+	
+	private function decodeBlockTable(&$fp) {
+		$blockSize = $this->blockTableSize * 4; // block table size in 4-byte chunks
+		$tmp = array();
+		for ($i = 0;$i < $blockSize;$i++)
+			$tmp[$i] = self::readUInt32($this->fileData, $fp);
+		$blockTable = self::decryptStuff($tmp,self::hashStuff("(block table)", self::$MPQ_HASH_FILE_KEY));		
+		$this->blocktable = $blockTable;
+	}
+	
 	function parseHeader() {
 		$fp = 0;
-		$headerParsed = false;
-		$headerOffset = 0;
-		while (!$headerParsed) {
-			$magic = unpack("c4",self::readBytes($this->fileData,$fp,4)); // MPQ 1Bh or 1Ah
-			if (($magic[1] != 0x4D) || ($magic[2] != 0x50) || ($magic[3] != 0x51)) { $this->init = false; return false; }
-			if ($magic[4] == 27) { // user data block (1Bh)
-				if ($this->debug) $this->debug(sprintf("Found user data block at %08X",$fp));
-				$uDataMaxSize = self::readUInt32($this->fileData, $fp);
-				$headerOffset = self::readUInt32($this->fileData, $fp);
-				$this->headerOffset = $headerOffset;
-				$uDataSize = self::readUInt32($this->fileData, $fp);
-				$uDataStart = $fp;
-				$userDataArray = MPQFile::parseSerializedData($this->fileData,$fp);
-				
-				$this->verMajor = $userDataArray[1][1];
-				$this->build = $userDataArray[1][4];
-				$this->gameLen = ceil($userDataArray[3] / 16);
-				$this->versionString = sprintf("%d.%d.%d.%d",$this->verMajor,
-															 $userDataArray[1][2],
-															 $userDataArray[1][3],
-															 $this->build
-															 );
-				
-				$fp = $headerOffset;
+		while (true) {
+			if ($fp + 4 > strlen($this->fileData)) {
+				$this->init = false;
+				if ($this->useExceptions) throw new Exception("Not enough input data in MPQFile->parseHeader");
+				return false;
 			}
-			else if ($magic[4] == 26) { // header (1Ah)
+			if (self::readBytes($this->fileData,$fp,3) !== "MPQ") { 
+				$this->init = false;
+				if ($this->useExceptions) throw new Exception("Erroneous magic byte value in MPQFile->parseHeader");
+				return false;
+			}
+			$magic = self::readByte($this->fileData,$fp); // MPQ 1Bh or 1Ah
+			if ($magic == 27) { // user data block (1Bh)
+				if ($this->debug) $this->debug(sprintf("Found user data block at %08X",$fp));
+				$this->parseUserDataBlock($fp);
+			}
+			else if ($magic == 26) { // header (1Ah)
 				if ($this->debug) $this->debug(sprintf("Found header at %08X",$fp));
-				$headerSize = self::readUInt32($this->fileData, $fp);
-				$archiveSize = self::readUInt32($this->fileData, $fp);
-				$this->archiveSize = $archiveSize;
-				$formatVersion = self::readUInt16($this->fileData, $fp);
-				$sectorSizeShift = self::readByte($this->fileData, $fp);
-				$sectorSize = 512 * pow(2,$sectorSizeShift);
-				$this->sectorSize = $sectorSize;
-				$fp++;
-				$hashTableOffset = self::readUInt32($this->fileData, $fp) + $headerOffset;
-				$this->hashTableOffset = $hashTableOffset;
-				$blockTableOffset = self::readUInt32($this->fileData, $fp) + $headerOffset; 
-				$this->blockTableOffset = $blockTableOffset;
-				if ($this->debug) $this->debug(sprintf("Hash table offset: %08X, Block table offset: %08X",$hashTableOffset, $blockTableOffset));
-				$hashTableEntries = self::readUInt32($this->fileData, $fp);
-				$this->hashTableSize = $hashTableEntries;
-				$blockTableEntries = self::readUInt32($this->fileData, $fp);
-				$this->blockTableSize = $blockTableEntries;
-				
-				$headerParsed = true;
+				$this->parseHeaderData($fp);
+				break;
 			}
 			else {
 				if ($this->debug) $this->debug("Could not find MPQ header");
+				if ($this->useExceptions) throw new Exception("MPQ file header not found in MPQFile->parseHeader");
 				return false;
 			}
 		}
 		// read and decode the hash table
-		$fp = $hashTableOffset;
-		$hashSize = $hashTableEntries * 4; // hash table size in 4-byte chunks
-		$tmp = array();
-		for ($i = 0;$i < $hashSize;$i++)
-			$tmp[$i] = self::readUInt32($this->fileData, $fp);
-		if ($this->debug) {
-			$this->debug("Encrypted hash table:");
-			$this->printTable($tmp);
-		}
-		$hashTable = self::decryptStuff($tmp,self::hashStuff("(hash table)", self::$MPQ_HASH_FILE_KEY));
-		if ($this->debug) {
-			$this->debug("DEBUG: Hash table");
-			$this->debug("HashA, HashB, Language+platform, Fileblockindex");
-			$tmpnewline = $this->debugNewline;
-			$this->debugNewline = "";
-			for ($i = 0;$i < $hashTableEntries;$i++) {
-				$filehashA = $hashTable[$i*4];
-				$filehashB = $hashTable[$i*4 +1];
-				$lanplat = $hashTable[$i*4 +2];
-				$blockindex = $hashTable[$i*4 +3];
-				$this->debug(sprintf("<pre>%08X %08X %08X %08X</pre>",$filehashA, $filehashB, $lanplat, $blockindex));
-			}
-			$this->debugNewline = $tmpnewline;
-		}		
+		$fp = $this->hashTableOffset;
+		$this->decodeHashTable($fp);
 		// read and decode the block table
-		$fp = $blockTableOffset;
-		$blockSize = $blockTableEntries * 4; // block table size in 4-byte chunks
-		$tmp = array();
-		for ($i = 0;$i < $blockSize;$i++)
-			$tmp[$i] = self::readUInt32($this->fileData, $fp);
-		if ($this->debug) {
-			$this->debug("Encrypted block table:");
-			$this->printTable($tmp);
-		}
-
-		$blockTable = self::decryptStuff($tmp,self::hashStuff("(block table)", self::$MPQ_HASH_FILE_KEY));		
-		$this->hashtable = $hashTable;
-		$this->blocktable = $blockTable;
-		if ($this->debug) {
-			$this->debug("DEBUG: Block table");
-			$this->debug("Offset, Blocksize, Filesize, flags");
-			$tmpnewline = $this->debugNewline;
-			$this->debugNewline = "";
-			for ($i = 0;$i < $blockTableEntries;$i++) {
-				$blockIndex = $i * 4;
-				$blockOffset = $this->blocktable[$blockIndex] + $this->headerOffset;
-				$blockSize = $this->blocktable[$blockIndex + 1];
-				$fileSize = $this->blocktable[$blockIndex + 2];
-				$flags = $this->blocktable[$blockIndex + 3];
-				$this->debug(sprintf("<pre>%08X %8d %8d %08X</pre>",$blockOffset, $blockSize, $fileSize, $flags));
-			}
-			$this->debugNewline = $tmpnewline;
-		}
+		$fp = $this->blockTableOffset;
+		$this->decodeBlockTable($fp);
 		$this->init = true;
 		
 		if ($this->getFileSize("replay.details") > 0 && $this->getFileSize("replay.initData") > 0)
@@ -308,6 +296,7 @@ class MPQFile {
 	function getFileSize($filename) {
 		if (!$this->init) {
 			if ($this->debug) $this->debug("Tried to use getFileSize without initializing");
+			if ($this->useExceptions) throw new Exception("Attempted to use function MPQFile->getFileSize without initializing");
 			return false;
 		}
 		$hashA = self::hashStuff($filename, self::$MPQ_HASH_NAME_A);
@@ -816,6 +805,8 @@ class MPQFile {
 		return $data;
 	}
 }
+
+class MPQException extends Exception {}
 
 function microtime_float() {
 	list($usec, $sec) = explode(" ", microtime());
