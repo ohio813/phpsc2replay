@@ -1026,6 +1026,7 @@ public static $ABILITYCODES_18574 = array(
 		0x002602 => array('desc' => 'holds position', 'name' => 'hold position', 'type' => SC2_TYPEGEN),
 		0x002A00 => array('desc' => 'attacks', 'name' => 'attack', 'type' => SC2_TYPEGEN),
 		0x006800 => array('desc' => 'gathers', 'name' => 'gather', 'type' => SC2_TYPEGEN),
+		0x006801 => array('desc' => 'returns cargo', 'name' => 'return cargo', 'type' => SC2_TYPEGEN),
 	);
 	
 	public static $UNITCODES = array (
@@ -1350,7 +1351,12 @@ public static $ABILITYCODES_18574 = array(
 	// return false if the ability code is unknown
 	static function getAbilityArray($num, $build) {
 		while ($build > 0) {
-			if ($build >= 18574) {
+			if ($build >= 19679) {
+				$array = self::$ABILITYCODES_18574;
+				if ($num > 0x003000) $num -= 0x000100;
+				$build = 0;
+			}
+			else if ($build >= 18574) {
 				$array = self::$ABILITYCODES_18574;
 				$build = 0;
 			}
