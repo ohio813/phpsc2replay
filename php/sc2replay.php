@@ -33,6 +33,7 @@ class SC2Replay {
 	private $debugNewline; // contents are appended to the end of all debug messages
 	private $messages; // contains an array of the chat log messages
 	private $winnerKnown;
+	private $winnerTeam; // a temporary variable that should not be used to determine winning team, only populated if winner is determinable from replay.details
 	private $unitsDict;
 	private $mapHash;
 	private $gameCtime; // when the game was played, represented as ctime
@@ -52,6 +53,7 @@ class SC2Replay {
 		$this->unitsDict = array();
 		$this->mapHash = null;
 		$this->recorderId = 0;
+		$this->winnerTeam = 0;
 	}
 	// parameter needs to be an instance of MPQFile
 	function parseReplay($mpqfile) {
@@ -232,6 +234,7 @@ class SC2Replay {
 		$array = MPQFile::parseSerializedData($string,$numByte);
 		$playerArray = $array[0];
 		foreach ($playerArray as $index => $player) {
+			if ($this->debug) { echo "<pre>"; print_r($player); echo "</pre>"; }
 			$p = array();
 			$p["name"] = $player[0];
 			$p["uid"] = $player[1][4];
@@ -254,6 +257,10 @@ class SC2Replay {
 			$p["isObs"] = false;
 			$p["difficulty"] = "";
 			$p["sColor"] = "";
+			if ($player[8] == 1) {
+				$p["won"] = $player[8];
+				$this->winnerKnown = true;
+			}
 			$this->players[$index + 1] = $p;
 		}
 		$this->mapName = $array[1];
@@ -340,6 +347,8 @@ class SC2Replay {
 			if (isset($teamArray[$team])) $teamArray[$team]++;
 			else $teamArray[$team] = 1;
 			$this->players[$i]["team"] = $team;
+			if ($this->players[$i]["won"] == 1)
+				$this->winnerTeam = $team;
 		}
 		foreach ($teamArray as $team => $count) {
 			if (isset($teamSizeString)) $teamSizeString .= "v$count";
@@ -559,6 +568,11 @@ class SC2Replay {
 							// the following updates race name in English based on the worker (SCV, Drone, Probe) that the player trained first
 							if ($this->build >= 16561) {
 								if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
+									if ($this->build >= 19679) {
+										if ($ability == 0x010D00) $this->players[$playerId]['race'] = "Terran";
+										elseif ($ability == 0x012100) $this->players[$playerId]['race'] = "Protoss";
+										elseif ($ability == 0x013300) $this->players[$playerId]['race'] = "Zerg";
+									}
 									if ($this->build >= 18574) {
 										if ($ability == 0x010C00) $this->players[$playerId]['race'] = "Terran";
 										elseif ($ability == 0x012000) $this->players[$playerId]['race'] = "Protoss";
@@ -1063,7 +1077,19 @@ class SC2Replay {
 				$teamCounts[$val['team']]++; // populate the array with the number of players for each team
 			else
 				$teamCounts[$val['team']] = 1;
+			if ($this->winnerTeam > 0) {
+				if ($val['team'] == $this->winnerTeam)
+					$this->players[$val['id']]['won'] = 1;
+				else
+					$this->players[$val['id']]['won'] = 0;
+			}
 		}
+		// if the winner is known in replay.details ($this->winnerTeam > 0), skip the winner detection algorithm below
+		if ($this->winnerTeam > 0) {
+			$this->winnerKnown = true;
+			return $numEvents;
+		}
+		
 		$numLeft = count($playerLeft);
 		$numActual = count($this->getActualPlayers());
 		$lastLeaver = -1;
