@@ -201,6 +201,7 @@ if (isset($_FILES['userfile'])) {
 				echo sprintf("Team size: %s, Game speed: %s<br />\n",$b->getTeamSize(), $b->getGameSpeedText());
 				echo sprintf("Real team size: %s<br />\n",$b->getRealTeamSize());
 				echo sprintf("Realm: %s<br />\n",$b->getRealm());
+				echo sprintf("Game type: %s<br />\n",SC2Replay::$gameTypes[$b->getGameType()]);
 				echo sprintf("Date and time played: %s<br />\n",date('jS \of F Y \a\t H:i' ,$b->getCtime()));
 				if ($recorder != null)
 					echo sprintf("Replay recorded by: %s (EXPERIMENTAL!)<br />\n",$recorder['name']);
