@@ -17,7 +17,8 @@ class SC2Replay {
 	public static $gameSpeeds = array("" => "Unknown", 0 => "Slower", 1=> "Slow", 2=> "Normal", 3=> "Fast", 4=> "Faster");
 	public static $difficultyLevels = array("" => "Unknown", 0 => "Very easy", 1=> "Easy", 2=> "Medium", 3=> "Hard", 4=> "Very Hard", 5 => "Insane");
 	public static $colorIndices = array("" => "Unknown", 1 => "Red", 2=> "Blue", 3=> "Teal", 4=> "Purple", 5=> "Yellow", 6 => "Orange", 7=> "Green", 8=> "Light Pink", 9=> "Violet", 10=> "Light Gray", 11=> "Dark Green", 12=> "Brown", 13=> "Light Green", 14=> "Dark Grey", 15=> "Pink");
-
+	public static $gameTypes = array("Amm" => "Automatchmaking", "Priv" => "Private", "Pub" => "Public" );
+	
 	private $players; //array, indices: color, team, sname, lname, race, startRace, handicap, ptype
 	private $gameLength; // game length in seconds
 	private $mapName;
@@ -25,6 +26,7 @@ class SC2Replay {
 	private $teamSize; // team size in the format xvx, eg. 1v1 in replay.attributes.events
 	private $realTeamSize; // real team size, eg. 1v2, 1v3, 2v4 etc.
 	private $gamePublic;
+	private $gameType;
 	private $realm;
 	private $version;
 	private $build;
@@ -122,6 +124,7 @@ class SC2Replay {
 	function getRealm() { return $this->realm; }
 	function getMapHash() { return $this->mapHash; }
 	function isGamePublic() { return $this->gamePublic; }
+	function getGameType() { return $this->gameType; }
 	function getCtime() { return $this->gameCtime; }
 	function getFiletime() { return $this->gameFiletime; }
 	function getRecorder() { if ($this->recorderId == 0) return null; return $this->players[$this->recorderId]; }
@@ -363,8 +366,11 @@ class SC2Replay {
 		$this->teamSize = $attribArray[0x07D1][0x10];
 		// game speed
 		$this->gameSpeed = $gameSpeeds[$attribArray[0x0BB8][0x10]];
-		// set game type
+		// game type, Amm for Automatchmaking, Priv for Private
+		$this->gameType = $attribArray[0x0BC1][0x10];
+		// the next field is a remnant, doesn't provide anything $this->gameType doesn't provide
 		$this->gamePublic = (($attribArray[0x0BC1][0x10] == "Priv")?false:true);
+		
 	}
 	
 	private function readUnitTypeID($string,&$numByte) {
