@@ -183,14 +183,20 @@ class SC2Replay {
 				$numByte += 5;
 			}
 		}
+		if ($this->build >= 22612) // 1.5 added something here
+			$numByte += 1;
 		$numByte += 6; // skip 6 bytes, fixed length, unknown what it means
 		$numByte += 4; // skip literal string 'Dflt'
 		$numByte += 15; // skip unknown 15 bytes
+		if ($this->build >= 22612) // 1.5 added something here
+			$numByte += 8;
 		$accountIdentifierLength = MPQFile::readByte($string,$numByte); // unknown account id thingy
 		if ($accountIdentifierLength > 0) {
 			$accountIdentifier = MPQFile::readBytes($string,$numByte,$accountIdentifierLength);
 		}
 		$numByte += 684; // length seems to be fixed, data seems to vary at least based on number of players
+		if ($this->build >= 22612) // 1.5 added something here
+			$numByte += 1;
 		while (true) {
 			$str = MPQFile::readBytes($string,$numByte,4);
 			if ($str != 's2ma') { $numByte -= 4; break; }
@@ -350,7 +356,8 @@ class SC2Replay {
 			if (isset($teamArray[$team])) $teamArray[$team]++;
 			else $teamArray[$team] = 1;
 			$this->players[$i]["team"] = $team;
-			if ($this->players[$i]["won"] == 1)
+			
+			if (isset($this->players[$i]["won"]) && $this->players[$i]["won"] == 1)
 				$this->winnerTeam = $team;
 		}
 		foreach ($teamArray as $team => $count) {
@@ -442,8 +449,237 @@ class SC2Replay {
 	}
 	
 
-	// parameter is the contents of the replay.game.events -file
-	private function parseGameEventsFile($string) {
+	private function parseGameEventsFile(&$string) {
+		if ($this->build >= 22612)
+			return $this->parseGameEventsFile_22612($string);
+		else
+			return $this->parseGameEventsFile_pre22612($string);
+	}
+	
+	private function parseGameEventsFile_22612(&$string) {
+		$playerLeft = array();
+		$events = array();
+		$time = 0;
+		$numEvents = 0;
+		$eventType = 0;
+		$stream = new BitStream($string);
+		while (true) {
+			$stream->alignToNextByte();
+			if ($stream->EOFreached())
+				break;
+			$knownEvent = true;
+			$timeStampLen = $stream->readBits(2);
+			$timeStamp = $stream->readBits(6 + $timeStampLen*8);
+
+			$playerId = $stream->readBits(4); 
+			$globalEventFlag = $stream->readBits(1); 
+			if (isset($this->players[$playerId]))
+				$playerName = $this->players[$playerId]['name'];
+			else
+				$playerName = "";
+			$eventType = $stream->readBits(7);
+			$time += $timeStamp;
+			$numEvents++;
+
+			if ($globalEventFlag > 0 && $playerId > 0)
+				$knownEvent = false;
+			else
+			switch ($eventType) {
+				case 0x05: // game starts
+					if ($globalEventFlag == 0 || $playerId > 0)
+						$knownEvent = false;
+					break;
+				case 0x0C: // player enters game
+					$stream->readBits(8);
+					if ($playerId == 0)
+						$knownEvent = false;
+					break;
+				case 0x1B: // abilities
+					$flags = $stream->readBits(20);
+					$defaultAbility = $stream->readBits(1);
+					if ($defaultAbility) {
+						$abilityID = $stream->readBits(16);
+						$buttonIndex = $stream->readBits(5);
+						$stream->skipBits(1);
+						if (!$this->players[$playerId]['isObs'] && $this->players[$playerId]['race'] == "") {
+							if ($abilityID == 0x0093) $this->players[$playerId]['race'] = "Terran";
+							elseif ($abilityID == 0x00A7) $this->players[$playerId]['race'] = "Protoss";
+							elseif ($abilityID == 0x00B9) $this->players[$playerId]['race'] = "Zerg";
+						}
+					}
+					$targetType = $stream->readBits(2);
+					switch ($targetType) {
+						case 0:
+							break;
+						case 1:
+							$targetX = $stream->readBits(20);
+							$targetY = $stream->readBits(20);
+							$targetZ = $stream->readBits(32);
+							break;
+						case 2:
+							$stream->skipBits(8);
+							$stream->skipBits(8);
+							$unitID = $stream->readBits(32);
+							$unitType = $stream->readBits(16);
+							$hasPlayer = $stream->readBits(1);
+							if ($hasPlayer)
+								$targetPlayer = $stream->readBits(4);
+							$hasTeam = $stream->readBits(1);
+							if ($hasTeam)
+								$targetTeam = $stream->readBits(4);
+							$targetX = $stream->readBits(20);
+							$targetY = $stream->readBits(20);
+							$targetZ = $stream->readBits(32);							
+							break;
+						case 3:
+							$unitID = $stream->readBits(32);
+							break;
+					}
+					$stream->skipBits(1);
+					break;
+				case 0x1C: // unit selection
+					$wireframeIndex = $stream->readBits(4);
+					$subgroupIndex = $stream->readBits(9);
+					$updateFlags = $stream->readBits(2);
+					switch ($updateFlags) {
+						case 0:
+							$unitTypes = $stream->readBits(9);
+							for ($i = 0;$i < $unitTypes;$i++) {
+								$unitTypeID = $stream->readBits(16);
+								$unitSubtype = $stream->readBits(8);
+								$unitsOfType = $stream->readBits(9);
+							}
+							$unitIDs = $stream->readBits(9);
+							for ($i = 0;$i < $unitIDs;$i++)
+								$unitID = $stream->readBits(32);
+							break;
+						case 1:
+							$unitsAffected = $stream->readBits(9);
+							$removedUnitFlags = $stream->readBits($unitsAffected);
+							$unitTypes = $stream->readBits(9);
+							for ($i = 0;$i < $unitTypes;$i++) {
+								$unitTypeID = $stream->readBits(16);
+								$unitSubtype = $stream->readBits(8);
+								$unitsOfType = $stream->readBits(9);
+							}
+							$unitIDs = $stream->readBits(9);
+							for ($i = 0;$i < $unitIDs;$i++)
+								$unitID = $stream->readBits(32);
+							break;
+						case 2:
+						case 3:
+							$wIndexLen = $stream->readBits(9);
+							$stream->skipBits(9*$wIndexLen);
+							$unitTypes = $stream->readBits(9);
+							for ($i = 0;$i < $unitTypes;$i++) {
+								$unitTypeID = $stream->readBits(16);
+								$unitSubtype = $stream->readBits(8);
+								$unitsOfType = $stream->readBits(9);
+							}
+							$unitIDs = $stream->readBits(9);
+							for ($i = 0;$i < $unitIDs;$i++)
+								$unitID = $stream->readBits(32);
+							break;
+						}
+					break;
+				case 0x1D: // Control groups
+					$controlGroup = $stream->readBits(4);
+					$actionType = $stream->readBits(2);
+					$updateType = $stream->readBits(2);
+					switch ($updateType) {
+						case 0:
+							break;
+						case 1:
+							$unitsAffected = $stream->readBits(9);
+							$stream->skipBits($unitsAffected);
+							break;
+						case 2:
+						case 3:
+							$unitIndices = $stream->readBits(9);
+							$stream->skipBits($unitIndices * 9);
+							break;
+					}
+					break;
+				case 0x19: // leaves game
+					if ($this->players[$playerId]['team'] > 0) // don't log observers/party members etc
+						$playerLeft[] = $playerId;
+					break;
+				case 0x1F: // Resource trading
+					$sendee = $stream-readBits(4);
+					$stream->skipBits(3);
+					$minerals = $stream->readBits(32);
+					$vespene = $stream->readBits(32);
+					$terrazine = $stream->readBits(32);
+					$wasistdas = $stream->readBits(32);
+					break;
+				case 0x23: // Unknown
+					$stream->skipBits(8);
+					break;
+				case 0x26: // Unknown
+					$stream->skipBits(64);
+					break;
+				case 0x27: // Target critter
+					$stream->skipBits(32);
+					break;
+				case 0x31: // camera movement
+					$xCoord = $stream->readBits(16);
+					$yCoord = $stream->readBits(16);
+					$zoomFlag = $stream->readBits(1);
+
+					if ($zoomFlag)
+						$zoom = $stream->readBits(16);
+					$pitchFlag = $stream->readBits(1);
+					if ($pitchFlag)
+						$pitch = $stream->readBits(16);
+					$yawFlag = $stream->readBits(1);
+					if ($yawFlag)
+						$yaw = $stream->readBits(16);
+					$someFlag = $stream->readBits(1);
+					break;
+				case 0x37: // Unknown
+					$stream->skipBits(64);
+					break;
+				case 0x38: // Unknown
+					$arrayLen = $stream->readBits(8);
+					$stream->skipBits(32*$arrayLen);
+					$arrayLen = $stream->readBits(8);
+					$stream->skipBits(32*$arrayLen);
+					break;
+				case 0x3C: // Unknown
+					$stream->skipBits(16);
+					break;
+				case 0x46: // Computer requests resources
+					$stream->skipBits(3);
+					$minerals = $stream->readBits(32);
+					$vespene = $stream->readBits(32);
+					$terrazine = $stream->readBits(32);
+					$wasistdas = $stream->readBits(32);
+					break;
+				case 0x4C; //????
+					$stream->skipBits(4);
+					break;
+				case 0x59: // sync?
+					$stream->skipBits(32);
+					break;
+				default:
+					$knownEvent = false;
+					break;
+			}
+			if ($knownEvent == false) {
+				if ($this->debug) $this->debug(sprintf("Unknown event: Timestamp: %d, Type: %02X, Global: %d, Player ID: %d (%s), Byte: %08X<br />\n",
+			       $timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$stream->getByte()));
+				return false;
+			}
+			else if ($this->debug >= 2) $this->debug(sprintf("DEBUG L2: Timestamp: %d, Frames: %d, Type: %02X, Global: %d, Player ID: %d (%s), Byte: %08X<br />\n",
+					floor($time / 16),$timeStamp, $eventType, $globalEventFlag,$playerId,$playerName,$stream->getByte()));
+		}
+		$this->populateWinners($playerLeft);
+		return $numEvents;	
+	}
+	
+	
+	// the following function is spaghetti
+	private function parseGameEventsFile_pre22612(&$string) {
 		$len = strlen($string);
 		$playerLeft = array();
 		$events = array();
@@ -1128,6 +1364,64 @@ class SC2Replay {
 		}
 		return $numEvents;
 	}
+	
+	// runs the winner detection algorithm, parameter is the array of the players who left the game from replay.game.events
+	private function populateWinners($playerLeft) {
+		$teamCounts = array();
+		foreach ($this->getActualPlayers() as $val) {
+			if ($val['race'] == "") 
+				$this->players[$val['id']]['race'] = $val['lrace'];
+			if ($this->recorderId > 0 && $val['id'] == $this->recorderId) // if the recorder is a player, add him to the player left -array
+				$playerLeft[] = $val['id'];								  // for maximum accuracy in winner detection
+			if (isset($teamCounts[$val['team']]))
+				$teamCounts[$val['team']]++; // populate the array with the number of players for each team
+			else
+				$teamCounts[$val['team']] = 1;
+			if ($this->winnerTeam > 0) {
+				if ($val['team'] == $this->winnerTeam)
+					$this->players[$val['id']]['won'] = 1;
+				else
+					$this->players[$val['id']]['won'] = 0;
+			}
+		}
+		// if the winner is known in replay.details ($this->winnerTeam > 0), skip the winner detection algorithm below
+		if ($this->winnerTeam > 0) {
+			$this->winnerKnown = true;
+			return;
+		}
+		
+		$numLeft = count($playerLeft);
+		$numActual = count($this->getActualPlayers());
+		$lastLeaver = -1;
+		foreach ($playerLeft as $val) {
+			$lastLeaver = $val;
+			$teamCounts[$this->players[$val]['team']]--;
+		}
+		// at this point teams with 0 players are clearly the losers (with the exception below). 
+		// If there are two or more teams with 1 or more players still left, winner can't be determined.
+		// If there is exactly one team with more than 0 players left, that team is the winner
+		// If no teams have more than 0 players left, the last leaver's team is the winner.
+		$tempWinnerTeam = 0;
+		$winnerKnown = false;
+		
+		for ($i = 1;$i <= 15;$i++) { // maximum number of teams is 15 (ffa)
+			if (!isset($teamCounts[$i])) continue;
+			if ($teamCounts[$i] > 0 && $tempWinnerTeam == 0) { $winnerKnown = true; $tempWinnerTeam = $i; } // initially set winner as known
+			else if ($teamCounts[$i] > 0 && $tempWinnerTeam > 0) { $winnerKnown = false; break; } // more than 1 team with 1 or more players left, winner undeterminable
+		}
+		if ($tempWinnerTeam == 0 && $lastLeaver > 0) { // this means that no team had more than 0 players left, so use the team of $lastLeaver
+			$winnerKnown = true;
+			$tempWinnerTeam = $this->players[$lastLeaver]['team'];
+		}
+		$this->winnerKnown = $winnerKnown;
+		if ($winnerKnown) {
+			foreach ($this->getActualPlayers() as $val) {
+				if ($val['team'] == $tempWinnerTeam) $this->players[$val['id']]['won'] = 1;
+				else $this->players[$val['id']]['won'] = 0;
+			}
+		}
+	}
+	
   // inserts unit into the unit dictionary and updates $time seen
   private function addSelectedUnit($uId, $uType, $playerId, $time){
     if(!isset($this->unitsDict[$playerId][$uId])){
