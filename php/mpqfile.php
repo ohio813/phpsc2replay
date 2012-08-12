@@ -816,6 +816,96 @@ class MPQFile {
 		return $data;
 	}
 }
+// convenience class for handling bit-specific data retrieval from a byte stream
+class BitStream {
+	private $curByte; // goes from 0 to $string - 1
+	private $curBit; // goes from 0 to 7, 0 being the least significant
+	private $str;
+	private $maxByte;
+	function __construct($string) {
+		$this->str = $string;
+		$this->maxByte = strlen($string) - 1;
+		$this->curBit = 0;
+		$this->curByte = 0;
+	}
+	function readBits($amount) { // maximum number is 32 bits
+		if ($this->curByte + ceil($amount / 8) > $this->maxByte) // not enough bytes left in the stream
+			return false;
+		if ((8 - $this->curBit) >= $amount) {	// only the current byte is needed
+			$retVal = (ord(substr($this->str,$this->curByte,1)) & (pow(2,$amount + $this->curBit + 1) - 1)) >> $this->curBit;
+			$retVal = $retVal & (pow(2,$amount) - 1);
+			$this->curBit += $amount;
+			if ($this->curBit > 7) {
+				$this->curBit = 0;
+				$this->curByte++;
+			}
+			return $retVal;
+		}
+		else { // more than 1 byte is needed
+			// first grab the bits left on the current byte
+			$retVal = (ord(substr($this->str,$this->curByte,1)) & (0xFF - (pow(2,$this->curBit) - 1))) >> $this->curBit; 
+			$tempAmount = $amount - (8 - $this->curBit);
+			$this->curByte++;
+			$this->curBit = 0;
+			// add any full bytes to the return value
+			for ($i = 1;$tempAmount >= 8;$i++) { 
+				//$retVal = $retVal | (ord(substr($this->str,$this->curByte,1)) << ($i * 8));
+				$retVal = ($retVal << ($i * 8)) | ord(substr($this->str,$this->curByte,1));
+				$tempAmount -= 8;
+				$this->curByte++;
+			}
+			// add any remaining bits to the end
+			if ($tempAmount > 0) {
+				$this->curBit = $tempAmount;
+				$temp = ord(substr($this->str,$this->curByte,1)) & (pow(2,$tempAmount) - 1); 
+				$retVal = ($retVal << ($tempAmount)) | $temp;
+			}
+			return $retVal;
+		}
+	}
+	
+	function skipBits($amount) {
+		$this->curByte += floor($amount / 8);
+		$this->curBit += ($amount % 8);
+		if ($this->curBit > 7) {
+			$this->curBit -= 8;
+			$this->curByte++;
+		}
+	}
+	function readByte() {
+		return $this->readBits(8);
+	}
+	function readBytes($num, $align = false) {
+		return $this->readBits(8*$num);
+	}
+	
+	// aligns the bitstream to the next byte and reads $num characters	
+	function readChrBytes($num) { 
+		$this->alignToNextByte();
+		if ($num + $this->curByte > $this->maxByte)
+			return false;
+		$retVal = substr($this->str,$this->curByte,$num);
+		$this->curByte += $num;
+		return $retVal;
+	}
+
+	// aligns the buffer to the next full byte
+	function alignToNextByte() {
+		if ($this->curBit > 0)
+			$this->curByte++;
+		$this->curBit = 0;
+	}
+	function getByte() {
+		return $this->curByte;
+	}
+	function getBit() {
+		return $this->curBit;
+	}
+	function EOFreached() {
+		return ($this->curByte > $this->maxByte);
+	}
+}
+
 
 function microtime_float() {
 	list($usec, $sec) = explode(" ", microtime());
